@@ -167,7 +167,7 @@ const LoginForm = ({ onAuthentication }) => {
         </Box>
 
         <Typography variant="h4" align="center" gutterBottom color="#ffffff" fontWeight="bold">
-          LOGIN
+          Sign up
         </Typography>
         <Typography variant="subtitle1" align="center" gutterBottom color="secondary">
           Access Your Account
