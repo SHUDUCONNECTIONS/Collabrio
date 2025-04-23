@@ -14,6 +14,8 @@ import {
   Alert,
   IconButton,
   Chip,
+  FormControlLabel,
+  useTheme,
 } from "@mui/material";
 import { Formik } from "formik";
 import * as yup from "yup";
@@ -45,6 +47,7 @@ const AddBoard = () => {
   const [error, setError] = useState(null);
   const [files, setFiles] = useState([]);
   const [fileUploading, setFileUploading] = useState(false);
+  const theme = useTheme();
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -103,7 +106,7 @@ const AddBoard = () => {
                   email: currentUser.email,
                   displayName: uploaderName,
                 },
-                type: getFileType(file.name), // Add file type information
+                type: getFileType(file.name),
               });
             }
           );
@@ -127,13 +130,15 @@ const AddBoard = () => {
       if (!currentUser)
         throw new Error("You must be logged in to create a board");
 
+      // Now members can be empty, so we handle that case
       const allMemberIds = [...new Set([currentUser.uid, ...values.members])];
 
       const boardData = {
         ...values,
         status: "To Do",
         createdAt: Timestamp.now(),
-        deadline: Timestamp.fromDate(new Date(values.deadline)),
+        // Only set deadline if noDeadline is false
+        deadline: values.noDeadline ? null : Timestamp.fromDate(new Date(values.deadline)),
         members: allMemberIds
           .map((memberId) => {
             const user = users.find((user) => user.id === memberId);
@@ -232,16 +237,16 @@ const AddBoard = () => {
     const ext = filename.split('.').pop().toLowerCase();
     switch (ext) {
       case 'pdf':
-        return '#f44336';
+        return theme.palette.mode === 'dark' ? '#ff7961' : '#f44336';
       case 'doc':
       case 'docx':
-        return '#2196f3';
+        return theme.palette.mode === 'dark' ? '#64b5f6' : '#2196f3';
       case 'xls':
       case 'xlsx':
       case 'csv':
-        return '#4caf50';
+        return theme.palette.mode === 'dark' ? '#81c784' : '#4caf50';
       default:
-        return '#757575';
+        return theme.palette.mode === 'dark' ? '#a5a5a5' : '#757575';
     }
   };
 
@@ -302,6 +307,11 @@ const AddBoard = () => {
                     "& > div": {
                       gridColumn: isNonMobile ? undefined : "span 4",
                     },
+                    backgroundColor: theme.palette.mode === "dark" 
+                      ? theme.palette.background.paper 
+                      : theme.palette.background.default,
+                    p: 2,
+                    borderRadius: 1,
                   }}
                 >
                   <TextField
@@ -358,7 +368,7 @@ const AddBoard = () => {
                     variant="filled"
                     sx={{ gridColumn: "span 4" }}
                   >
-                    <InputLabel id="members-label">Choose Members</InputLabel>
+                    <InputLabel id="members-label">Choose Members (Optional)</InputLabel>
                     <Select
                       labelId="members-label"
                       multiple
@@ -367,15 +377,17 @@ const AddBoard = () => {
                         setFieldValue("members", event.target.value)
                       }
                       renderValue={(selected) =>
-                        selected
-                          .map((id) => {
-                            const user = users.find((user) => user.id === id);
-                            return user
-                              ? `${user.firstName} ${user.surname}`
-                              : "";
-                          })
-                          .filter(Boolean)
-                          .join(", ")
+                        selected.length === 0 
+                          ? <em>No members selected</em>
+                          : selected
+                              .map((id) => {
+                                const user = users.find((user) => user.id === id);
+                                return user
+                                  ? `${user.firstName} ${user.surname}`
+                                  : "";
+                              })
+                              .filter(Boolean)
+                              .join(", ")
                       }
                     >
                       {users
@@ -396,22 +408,44 @@ const AddBoard = () => {
                     </Select>
                   </FormControl>
 
-                  <DatePicker
-                    label="Deadline"
-                    value={values.deadline}
-                    onChange={(date) => setFieldValue("deadline", date)}
-                    minDate={new Date()}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        fullWidth
-                        variant="filled"
-                        error={!!touched.deadline && !!errors.deadline}
-                        helperText={touched.deadline && errors.deadline}
-                        sx={{ gridColumn: "span 4" }}
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={values.noDeadline}
+                        onChange={(e) => {
+                          setFieldValue("noDeadline", e.target.checked);
+                          if (e.target.checked) {
+                            // Clear the deadline if "No Deadline" is checked
+                            setFieldValue("deadline", null);
+                          }
+                        }}
+                        name="noDeadline"
                       />
-                    )}
+                    }
+                    label="No Deadline"
+                    sx={{ gridColumn: "span 4" }}
                   />
+
+                  {!values.noDeadline && (
+                    <DatePicker
+                      label="Deadline"
+                      value={values.deadline}
+                      onChange={(date) => setFieldValue("deadline", date)}
+                      minDate={new Date()}
+                      disabled={values.noDeadline}
+                      sx={{ gridColumn: "span 4" }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          fullWidth
+                          variant="filled"
+                          error={!!touched.deadline && !!errors.deadline && !values.noDeadline}
+                          helperText={touched.deadline && errors.deadline && !values.noDeadline ? errors.deadline : ""}
+                          sx={{ gridColumn: "span 4" }}
+                        />
+                      )}
+                    />
+                  )}
 
                   <Box sx={{ gridColumn: "span 4" }}>
                     <input
@@ -425,7 +459,13 @@ const AddBoard = () => {
                       }
                     />
                     <label htmlFor="file-upload">
-                      <IconButton component="span" color="secondary">
+                      <IconButton 
+                        component="span" 
+                        color="secondary"
+                        sx={{
+                          color: theme.palette.secondary.main,
+                        }}
+                      >
                         <CloudUploadIcon />
                       </IconButton>
                       <span>
@@ -456,7 +496,7 @@ const AddBoard = () => {
                           sx={{
                             bgcolor: getFileColor(file.name),
                             '& .MuiChip-label': {
-                              color: '#fff'
+                              color: theme.palette.getContrastText(getFileColor(file.name))
                             }
                           }}
                         />
@@ -498,11 +538,17 @@ const boardSchema = yup.object().shape({
   boardName: yup.string().required("Board Name is required"),
   description: yup.string().required("Description is required"),
   priority: yup.string().required("Priority is required"),
-  members: yup
-    .array()
-    .min(1, "Please select at least one member")
-    .required("Members are required"),
-  deadline: yup.date().required("Deadline is required"),
+  members: yup.array(), // Remove the min and required constraints
+  deadline: yup.date().nullable().test({
+    name: 'deadline-required',
+    test: function(value, context) {
+      // Only require deadline if noDeadline is false
+      return context.parent.noDeadline || value 
+        ? true 
+        : this.createError({ message: 'Deadline is required if "No Deadline" is not checked' });
+    }
+  }),
+  noDeadline: yup.boolean(), // New field for the "No Deadline" checkbox
   documents: yup.array().test('fileFormat', 'Invalid file format', function(value) {
     if (!value) return true;
     const validFormats = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv'];
@@ -518,6 +564,7 @@ const initialValues = {
   priority: "Medium",
   members: [],
   deadline: null,
+  noDeadline: false, // New field for the "No Deadline" checkbox
   documents: [],
 };
 
