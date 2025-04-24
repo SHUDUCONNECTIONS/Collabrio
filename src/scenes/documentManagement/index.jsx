@@ -18,10 +18,12 @@ import {
   Delete as DeleteIcon,
 } from "@mui/icons-material";
 
-import { doc, updateDoc } from "firebase/firestore";
-import { ref, deleteObject, getDownloadURL } from "firebase/storage";
+
+import { doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { ref, deleteObject, getDownloadURL, uploadBytes } from "firebase/storage";
 import { useParams } from "react-router-dom";
 import { auth, db, storage } from "../../utils/firebase";
+
 
 const DocumentManagement = ({
   documents = [],
@@ -33,43 +35,104 @@ const DocumentManagement = ({
   const { boardId: paramBoardId } = useParams();
   const boardId = propBoardId || paramBoardId;
 
+
   const [error, setError] = useState(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
 
   const handleFileUpload = async (event) => {
     const files = Array.from(event.target.files);
     if (files.length === 0) return;
 
+
     try {
       setError(null);
-      await onUpload(
-        files.map((file) => ({
+     
+      // If onUpload is provided as a prop, use it
+      if (typeof onUpload === 'function') {
+        const filePayload = files.map((file) => ({
           file,
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          uploadedAt: new Date().toISOString(),
           uploadedBy: {
-            uid: auth.currentUser?.uid,
-            email: auth.currentUser?.email,
-            displayName:
-              auth.currentUser?.displayName || auth.currentUser?.email,
+            uid: auth.currentUser?.uid || 'anonymous',
+            email: auth.currentUser?.email || 'unknown',
+            displayName: auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown User',
           },
-        }))
-      );
+        }));
+       
+        // Debug the payload
+        console.log('Upload payload:', filePayload);
+        await onUpload(filePayload);
+      }
+      // Fallback implementation if onUpload isn't provided
+      else {
+        if (!boardId) {
+          throw new Error("Board ID is required for uploading documents");
+        }
+       
+        const boardRef = doc(db, "boards", boardId);
+        const uploadTimestamp = new Date().toISOString();
+       
+        for (const file of files) {
+          // Create a reference to the file in Firebase Storage
+          const fileRef = ref(storage, `boards/${boardId}/documents/${Date.now()}_${file.name}`);
+         
+          // Upload the file
+          await uploadBytes(fileRef, file);
+         
+          // Get the download URL
+          const downloadURL = await getDownloadURL(fileRef);
+         
+          // Create the document object with all required fields
+          const newDocument = {
+            name: file.name,
+            url: downloadURL,
+            path: fileRef.fullPath,
+            type: file.type,
+            size: file.size,
+            uploadedAt: uploadTimestamp,
+            uploadedBy: {
+              uid: auth.currentUser?.uid || 'anonymous',
+              email: auth.currentUser?.email || 'unknown',
+              displayName: auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown User',
+            },
+          };
+         
+          // Update the Firestore document with the new document
+          await updateDoc(boardRef, {
+            documents: arrayUnion(newDocument)
+          });
+         
+          // Update the local state
+          setDocuments(prev => [...prev, newDocument]);
+        }
+      }
     } catch (uploadError) {
       console.error("Error uploading file:", uploadError);
-      setError("Failed to upload documents");
+      setError(`Failed to upload documents: ${uploadError.message}`);
+    } finally {
+      // Reset the file input
+      event.target.value = "";
     }
   };
 
+
   const getUploaderDisplayName = (document) => {
-    if (document.uploadedBy?.displayName) {
+    if (document?.uploadedBy?.displayName) {
       return document.uploadedBy.displayName;
     }
-    if (document.uploadedBy?.email) {
+    if (document?.uploadedBy?.email) {
       return document.uploadedBy.email;
     }
     return "Unknown User";
   };
+
 
   const handleDeleteClick = (document, e) => {
     e.stopPropagation();
@@ -77,12 +140,14 @@ const DocumentManagement = ({
     setDeleteConfirmOpen(true);
   };
 
+
   const handleDownload = async (document) => {
     setError(null);
-    if (!document.url) {
+    if (!document?.url) {
       setError("Download failed: No file URL available.");
       return;
     }
+
 
     try {
       const downloadURL = await getDownloadURL(ref(storage, document.url));
@@ -93,40 +158,62 @@ const DocumentManagement = ({
     }
   };
 
+
   const confirmDelete = async () => {
     if (!selectedDoc || !boardId) {
       setError("Unable to delete document: Missing required information");
       return;
     }
 
+
     setIsDeleting(true);
     try {
+      // Check if URL exists and is valid
       if (selectedDoc.url) {
         try {
-          const fileUrl = new URL(selectedDoc.url);
-          const filePath = decodeURIComponent(
-            fileUrl.pathname.split("/o/")[1].split("?")[0]
-          );
-          const storageRef = ref(storage, filePath);
-          await deleteObject(storageRef);
+          // Handle both full URLs and storage paths
+          let filePath;
+          if (selectedDoc.url.startsWith('http')) {
+            const fileUrl = new URL(selectedDoc.url);
+            filePath = decodeURIComponent(
+              fileUrl.pathname.split("/o/")[1]?.split("?")[0]
+            );
+          } else {
+            filePath = selectedDoc.url;
+          }
+         
+          if (filePath) {
+            const storageRef = ref(storage, filePath);
+            await deleteObject(storageRef);
+          }
         } catch (storageError) {
           console.error("Storage delete error:", storageError);
-          throw new Error("Failed to delete file from storage");
+          // Continue with document record deletion even if storage deletion fails
         }
       }
 
+
       const boardRef = doc(db, "boards", boardId);
+     
+      // Use arrayRemove for clean document removal
+      if (selectedDoc) {
+        await updateDoc(boardRef, {
+          documents: arrayRemove(selectedDoc)
+        });
+      }
+     
+      // Update local state
       const updatedDocuments = documents.filter(
         (docItem) => docItem.url !== selectedDoc.url
       );
 
-      await updateDoc(boardRef, { documents: updatedDocuments });
 
       if (typeof setDocuments === "function") {
         setDocuments(updatedDocuments);
       } else {
         console.error("setDocuments is not a function");
       }
+
 
       setError(null);
     } catch (err) {
@@ -138,6 +225,7 @@ const DocumentManagement = ({
       setSelectedDoc(null);
     }
   };
+
 
   return (
     <Box
@@ -196,6 +284,7 @@ const DocumentManagement = ({
           </Box>
         </Box>
 
+
         {error && (
           <Alert severity="error" sx={{ mt: 1 }} onClose={() => setError(null)}>
             {error}
@@ -203,11 +292,12 @@ const DocumentManagement = ({
         )}
       </Box>
 
+
       <Box sx={{ overflowY: "auto", flex: 1, p: 1 }}>
-        {documents.length > 0 ? (
+        {documents && documents.length > 0 ? (
           documents.map((document, index) => (
             <Paper
-              key={document.url || index}
+              key={document?.url || index}
               elevation={1}
               sx={{
                 p: 1,
@@ -220,11 +310,11 @@ const DocumentManagement = ({
             >
               <Box>
                 <Typography variant="subtitle2">
-                  {index + 1}. {document.name}
+                  {index + 1}. {document?.name || "Unnamed Document"}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Uploaded by {getUploaderDisplayName(document)}
-                  {document.uploadedAt &&
+                  {document?.uploadedAt &&
                     ` on ${new Date(document.uploadedAt).toLocaleString()}`}
                 </Typography>
               </Box>
@@ -242,9 +332,9 @@ const DocumentManagement = ({
                   onClick={(e) => handleDeleteClick(document, e)}
                   size="small"
                   color="error"
-                  disabled={isDeleting && selectedDoc?.url === document.url}
+                  disabled={isDeleting && selectedDoc?.url === document?.url}
                 >
-                  {isDeleting && selectedDoc?.url === document.url ? (
+                  {isDeleting && selectedDoc?.url === document?.url ? (
                     <CircularProgress size={20} />
                   ) : (
                     <DeleteIcon />
@@ -260,6 +350,7 @@ const DocumentManagement = ({
         )}
       </Box>
 
+
       <Dialog
         open={deleteConfirmOpen}
         onClose={() => !isDeleting && setDeleteConfirmOpen(false)}
@@ -267,7 +358,7 @@ const DocumentManagement = ({
         <DialogTitle>Delete Document</DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to delete "{selectedDoc?.name}"? This action
+            Are you sure you want to delete "{selectedDoc?.name || 'this document'}"? This action
             cannot be undone.
           </Typography>
           {error && (
@@ -297,4 +388,6 @@ const DocumentManagement = ({
   );
 };
 
+
 export default DocumentManagement;
+
