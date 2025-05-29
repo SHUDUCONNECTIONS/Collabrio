@@ -38,6 +38,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import CancelIcon from "@mui/icons-material/Cancel";
+import emailjs from '@emailjs/browser';
 
 const AddBoard = () => {
   const isNonMobile = useMediaQuery("(min-width:600px)");
@@ -47,9 +48,18 @@ const AddBoard = () => {
   const [error, setError] = useState(null);
   const [files, setFiles] = useState([]);
   const [fileUploading, setFileUploading] = useState(false);
+  const [sendingEmails, setSendingEmails] = useState(false);
   const theme = useTheme();
 
+  // EmailJS configuration - Replace with your actual values
+  const EMAILJS_SERVICE_ID = process.env.REACT_APP_EMAILJS_SERVICE_ID;
+  const EMAILJS_TEMPLATE_ID = process.env.REACT_APP_EMAILJS_TEMPLATE_ID;
+  const EMAILJS_PUBLIC_KEY = process.env.REACT_APP_EMAILJS_PUBLIC_KEY;
+
   useEffect(() => {
+    // Initialize EmailJS
+    emailjs.init(EMAILJS_PUBLIC_KEY);
+    
     const fetchUsers = async () => {
       try {
         const usersRef = collection(db, "users");
@@ -69,6 +79,108 @@ const AddBoard = () => {
 
     fetchUsers();
   }, []);
+
+  // Function to check if user exists in the system
+  const checkUserExists = async (email) => {
+    try {
+      const usersRef = collection(db, "users");
+      const snapshot = await getDocs(usersRef);
+      const userExists = snapshot.docs.some(doc => doc.data().email === email);
+      return userExists;
+    } catch (error) {
+      console.error("Error checking user existence:", error);
+      return false; // Default to treating as new user if check fails
+    }
+  };
+
+  // Function to send notification emails to board members
+  const sendNotificationEmails = async (boardData, creatorName, memberEmails, boardId) => {
+    if (!memberEmails || memberEmails.length === 0) {
+      return { success: true, message: "No members to notify" };
+    }
+
+    setSendingEmails(true);
+    const emailPromises = memberEmails.map(async (memberEmail) => {
+      try {
+        // Check if user exists in the system
+        const userExists = await checkUserExists(memberEmail.email);
+        
+        // Determine the appropriate URL and messaging
+        const boardUrl = `${window.location.origin}/boards/${boardId}`;
+        const loginUrl = `${window.location.origin}/login`;
+        const companyName = "Collabrio";
+        const supportEmail = "support@collabrio.com";
+        
+        // Create simplified template parameters - avoid complex conditional logic
+        const templateParams = {
+          // EmailJS commonly expects these standard field names
+          to_name: memberEmail.name || "User",
+          to_email: memberEmail.email,
+          from_name: creatorName || "Team Member",
+          from_email: auth.currentUser?.email || supportEmail,
+          reply_to: auth.currentUser?.email || supportEmail,
+          
+          // Board specific information
+          board_name: boardData.boardName || "New Board",
+          board_description: boardData.description || "No description provided",
+          board_priority: boardData.priority || "Medium",
+          deadline: boardData.deadline 
+            ? new Date(boardData.deadline.seconds * 1000).toLocaleDateString()
+            : "No deadline set",
+          action_url: userExists ? boardUrl : loginUrl,
+          
+          // Company information
+          company_name: companyName,
+          support_email: supportEmail,
+          
+          // Message content
+          message: `You have been invited to join the board "${boardData.boardName || 'New Board'}" by ${creatorName || 'a team member'}.`,
+        };
+
+        console.log("Sending email with params:", templateParams);
+
+        const response = await emailjs.send(
+          EMAILJS_SERVICE_ID,
+          EMAILJS_TEMPLATE_ID,
+          templateParams,
+          EMAILJS_PUBLIC_KEY
+        );
+
+        console.log(`Email sent successfully to ${memberEmail.email}:`, response);
+        return { success: true, email: memberEmail.email, userType: userExists ? 'existing' : 'new' };
+      } catch (error) {
+        console.error(`Failed to send email to ${memberEmail.email}:`, error);
+        // Log more details about the error
+        if (error.status) {
+          console.error(`EmailJS Error Status: ${error.status}, Text: ${error.text}`);
+        }
+        return { success: false, email: memberEmail.email, error: error.text || error.message };
+      }
+    });
+
+    try {
+      const results = await Promise.all(emailPromises);
+      const failedEmails = results.filter(result => !result.success);
+      const successEmails = results.filter(result => result.success);
+      
+      setSendingEmails(false);
+      
+      console.log(`Emails sent: ${successEmails.length} successful, ${failedEmails.length} failed`);
+      
+      if (failedEmails.length === 0) {
+        return { success: true, message: "All notification emails sent successfully" };
+      } else {
+        return { 
+          success: false, 
+          message: `Failed to send emails to: ${failedEmails.map(f => f.email).join(", ")}` 
+        };
+      }
+    } catch (error) {
+      setSendingEmails(false);
+      console.error("Error sending notification emails:", error);
+      return { success: false, message: "Failed to send notification emails" };
+    }
+  };
 
   const handleFileUpload = async (files, uploaderName, boardId) => {
     if (!files || files.length === 0) return [];
@@ -162,7 +274,7 @@ const AddBoard = () => {
       };
 
       const boardRef = await addDoc(collection(db, "boards"), boardData);
-      return boardRef.id;
+      return { boardId: boardRef.id, boardData };
     } catch (error) {
       console.error("Error creating board:", error);
       throw error;
@@ -185,7 +297,7 @@ const AddBoard = () => {
           }`.trim()
         : "Unknown";
 
-      const boardId = await createBoard(values, uploaderName);
+      const { boardId, boardData } = await createBoard(values, uploaderName);
 
       let uploadedDocuments = [];
       if (files.length > 0) {
@@ -203,6 +315,27 @@ const AddBoard = () => {
       await updateDoc(boardRef, {
         documents: uploadedDocuments,
       });
+
+      // Send notification emails to added members (excluding the creator)
+      if (values.members && values.members.length > 0) {
+        const memberEmails = values.members
+          .map(memberId => {
+            const user = users.find(u => u.id === memberId);
+            return user ? {
+              email: user.email,
+              name: `${user.firstName} ${user.surname}`.trim()
+            } : null;
+          })
+          .filter(Boolean);
+
+        const emailResult = await sendNotificationEmails(boardData, uploaderName, memberEmails, boardId);
+        
+        if (!emailResult.success) {
+          console.warn("Email notification warning:", emailResult.message);
+          // Don't throw an error here, just log the warning
+          // The board was created successfully, email failure shouldn't stop the process
+        }
+      }
 
       navigate("../boards");
     } catch (error) {
@@ -280,6 +413,12 @@ const AddBoard = () => {
           {error && (
             <Alert severity="warning" sx={{ mb: 2 }}>
               {error}
+            </Alert>
+          )}
+
+          {sendingEmails && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Sending notification emails to board members...
             </Alert>
           )}
 
@@ -434,16 +573,17 @@ const AddBoard = () => {
                       minDate={new Date()}
                       disabled={values.noDeadline}
                       sx={{ gridColumn: "span 4" }}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          fullWidth
-                          variant="filled"
-                          error={!!touched.deadline && !!errors.deadline && !values.noDeadline}
-                          helperText={touched.deadline && errors.deadline && !values.noDeadline ? errors.deadline : ""}
-                          sx={{ gridColumn: "span 4" }}
-                        />
-                      )}
+                      slots={{
+                        textField: TextField,
+                      }}
+                      slotProps={{
+                        textField: {
+                          fullWidth: true,
+                          variant: "filled",
+                          error: !!touched.deadline && !!errors.deadline && !values.noDeadline,
+                          helperText: touched.deadline && errors.deadline && !values.noDeadline ? errors.deadline : "",
+                        },
+                      }}
                     />
                   )}
 
@@ -510,7 +650,7 @@ const AddBoard = () => {
                     type="submit"
                     color="secondary"
                     variant="contained"
-                    disabled={isSubmitting || fileUploading}
+                    disabled={isSubmitting || fileUploading || sendingEmails}
                     sx={{
                       width: "100%",
                       py: 1.5,
@@ -520,6 +660,8 @@ const AddBoard = () => {
                   >
                     {isSubmitting ? (
                       <CircularProgress size={24} />
+                    ) : sendingEmails ? (
+                      "Sending Notifications..."
                     ) : (
                       "Create Board"
                     )}
@@ -538,17 +680,16 @@ const boardSchema = yup.object().shape({
   boardName: yup.string().required("Board Name is required"),
   description: yup.string().required("Description is required"),
   priority: yup.string().required("Priority is required"),
-  members: yup.array(), // Remove the min and required constraints
+  members: yup.array(),
   deadline: yup.date().nullable().test({
     name: 'deadline-required',
     test: function(value, context) {
-      // Only require deadline if noDeadline is false
       return context.parent.noDeadline || value 
         ? true 
         : this.createError({ message: 'Deadline is required if "No Deadline" is not checked' });
     }
   }),
-  noDeadline: yup.boolean(), // New field for the "No Deadline" checkbox
+  noDeadline: yup.boolean(),
   documents: yup.array().test('fileFormat', 'Invalid file format', function(value) {
     if (!value) return true;
     const validFormats = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv'];
@@ -564,7 +705,7 @@ const initialValues = {
   priority: "Medium",
   members: [],
   deadline: null,
-  noDeadline: false, // New field for the "No Deadline" checkbox
+  noDeadline: false,
   documents: [],
 };
 
