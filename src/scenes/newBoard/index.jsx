@@ -115,7 +115,7 @@ const AddBoard = () => {
         const templateParams = {
           // EmailJS commonly expects these standard field names
           to_name: memberEmail.name || "User",
-          to_email: "lindokuhlemalinga20@gmail.com",
+          to_email: memberEmail.email,
           from_name: creatorName || "Team Member",
           from_email: auth.currentUser?.email || supportEmail,
           reply_to: auth.currentUser?.email || supportEmail,
