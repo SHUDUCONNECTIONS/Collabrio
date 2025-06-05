@@ -1,386 +1,324 @@
+// Enhanced DocumentManagement Component with uploader name, delete functionality, and Excel support
+
 import React, { useState } from "react";
 import {
   Box,
   Typography,
   Button,
-  Alert,
   IconButton,
   CircularProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  ListItemSecondaryAction,
   Paper,
+  useTheme,
+  alpha,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
 } from "@mui/material";
 import {
+  Description as DocumentIcon,
+  InsertDriveFile as FileIcon,
+  Visibility as VisibilityIcon,
   CloudUpload as CloudUploadIcon,
   Download as DownloadIcon,
   Delete as DeleteIcon,
+  TableChart as ExcelIcon,
 } from "@mui/icons-material";
-
-
-import { doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
-import { ref, deleteObject, getDownloadURL, uploadBytes } from "firebase/storage";
-import { useParams } from "react-router-dom";
+import {
+  doc,
+  updateDoc,
+  arrayRemove,
+} from "firebase/firestore";
+import {
+  ref,
+  deleteObject,
+} from "firebase/storage";
 import { auth, db, storage } from "../../utils/firebase";
 
-
-const DocumentManagement = ({
-  documents = [],
-  setDocuments = () => {},
-  onUpload,
-  isUploading,
-  boardId: propBoardId,
-}) => {
-  const { boardId: paramBoardId } = useParams();
-  const boardId = propBoardId || paramBoardId;
-
-
-  const [error, setError] = useState(null);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [selectedDoc, setSelectedDoc] = useState(null);
+const DocumentManagement = ({ documents, onUpload, isUploading, boardId }) => {
+  const theme = useTheme();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-
-
-  const handleFileUpload = async (event) => {
+  
+  const handleFileUpload = (event) => {
     const files = Array.from(event.target.files);
-    if (files.length === 0) return;
-
-
-    try {
-      setError(null);
-     
-      // If onUpload is provided as a prop, use it
-      if (typeof onUpload === 'function') {
-        const filePayload = files.map((file) => ({
-          file,
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          uploadedAt: new Date().toISOString(),
-          uploadedBy: {
-            uid: auth.currentUser?.uid || 'anonymous',
-            email: auth.currentUser?.email || 'unknown',
-            displayName: auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown User',
-          },
-        }));
-       
-        // Debug the payload
-        console.log('Upload payload:', filePayload);
-        await onUpload(filePayload);
-      }
-      // Fallback implementation if onUpload isn't provided
-      else {
-        if (!boardId) {
-          throw new Error("Board ID is required for uploading documents");
-        }
-       
-        const boardRef = doc(db, "boards", boardId);
-        const uploadTimestamp = new Date().toISOString();
-       
-        for (const file of files) {
-          // Create a reference to the file in Firebase Storage
-          const fileRef = ref(storage, `boards/${boardId}/documents/${Date.now()}_${file.name}`);
-         
-          // Upload the file
-          await uploadBytes(fileRef, file);
-         
-          // Get the download URL
-          const downloadURL = await getDownloadURL(fileRef);
-         
-          // Create the document object with all required fields
-          const newDocument = {
-            name: file.name,
-            url: downloadURL,
-            path: fileRef.fullPath,
-            type: file.type,
-            size: file.size,
-            uploadedAt: uploadTimestamp,
-            uploadedBy: {
-              uid: auth.currentUser?.uid || 'anonymous',
-              email: auth.currentUser?.email || 'unknown',
-              displayName: auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown User',
-            },
-          };
-         
-          // Update the Firestore document with the new document
-          await updateDoc(boardRef, {
-            documents: arrayUnion(newDocument)
-          });
-         
-          // Update the local state
-          setDocuments(prev => [...prev, newDocument]);
-        }
-      }
-    } catch (uploadError) {
-      console.error("Error uploading file:", uploadError);
-      setError(`Failed to upload documents: ${uploadError.message}`);
-    } finally {
-      // Reset the file input
-      event.target.value = "";
+    if (files.length > 0 && onUpload) {
+      onUpload(files);
     }
   };
 
-
-  const getUploaderDisplayName = (document) => {
-    if (document?.uploadedBy?.displayName) {
-      return document.uploadedBy.displayName;
-    }
-    if (document?.uploadedBy?.email) {
-      return document.uploadedBy.email;
-    }
-    return "Unknown User";
+  const handleDeleteDocument = async (document) => {
+    setDocumentToDelete(document);
+    setDeleteDialogOpen(true);
   };
 
-
-  const handleDeleteClick = (document, e) => {
-    e.stopPropagation();
-    setSelectedDoc(document);
-    setDeleteConfirmOpen(true);
-  };
-
-
-  const handleDownload = async (document) => {
-    setError(null);
-    if (!document?.url) {
-      setError("Download failed: No file URL available.");
-      return;
-    }
-
-
-    try {
-      const downloadURL = await getDownloadURL(ref(storage, document.url));
-      window.open(downloadURL, "_blank");
-    } catch (downloadError) {
-      console.error("Download error:", downloadError);
-      setError("Download failed: File may not exist or URL is incorrect.");
-    }
-  };
-
-
-  const confirmDelete = async () => {
-    if (!selectedDoc || !boardId) {
-      setError("Unable to delete document: Missing required information");
-      return;
-    }
-
-
+  const confirmDeleteDocument = async () => {
+    if (!documentToDelete) return;
+    
     setIsDeleting(true);
     try {
-      // Check if URL exists and is valid
-      if (selectedDoc.url) {
-        try {
-          // Handle both full URLs and storage paths
-          let filePath;
-          if (selectedDoc.url.startsWith('http')) {
-            const fileUrl = new URL(selectedDoc.url);
-            filePath = decodeURIComponent(
-              fileUrl.pathname.split("/o/")[1]?.split("?")[0]
-            );
-          } else {
-            filePath = selectedDoc.url;
-          }
-         
-          if (filePath) {
-            const storageRef = ref(storage, filePath);
-            await deleteObject(storageRef);
-          }
-        } catch (storageError) {
-          console.error("Storage delete error:", storageError);
-          // Continue with document record deletion even if storage deletion fails
-        }
+      // Delete from Firebase Storage
+      if (documentToDelete.storagePath) {
+        const storageRef = ref(storage, documentToDelete.storagePath);
+        await deleteObject(storageRef);
       }
 
-
+      // Remove from Firestore
       const boardRef = doc(db, "boards", boardId);
-     
-      // Use arrayRemove for clean document removal
-      if (selectedDoc) {
-        await updateDoc(boardRef, {
-          documents: arrayRemove(selectedDoc)
-        });
-      }
-     
-      // Update local state
-      const updatedDocuments = documents.filter(
-        (docItem) => docItem.url !== selectedDoc.url
-      );
+      await updateDoc(boardRef, {
+        documents: arrayRemove(documentToDelete),
+      });
 
-
-      if (typeof setDocuments === "function") {
-        setDocuments(updatedDocuments);
-      } else {
-        console.error("setDocuments is not a function");
-      }
-
-
-      setError(null);
-    } catch (err) {
-      console.error("Delete error:", err);
-      setError(`Failed to delete document: ${err.message}`);
+      setDeleteDialogOpen(false);
+      setDocumentToDelete(null);
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      // You might want to show an error message to the user here
     } finally {
       setIsDeleting(false);
-      setDeleteConfirmOpen(false);
-      setSelectedDoc(null);
     }
   };
 
+  const getFileIcon = (fileName) => {
+    const extension = fileName.split('.').pop().toLowerCase();
+    if (['xlsx', 'xls', 'csv'].includes(extension)) {
+      return <ExcelIcon color="success" />;
+    }
+    return <FileIcon color="primary" />;
+  };
+
+  const getFileTypeLabel = (fileName) => {
+    const extension = fileName.split('.').pop().toLowerCase();
+    switch (extension) {
+      case 'xlsx':
+      case 'xls':
+        return 'Excel';
+      case 'csv':
+        return 'CSV';
+      case 'pdf':
+        return 'PDF';
+      case 'doc':
+      case 'docx':
+        return 'Word';
+      case 'txt':
+        return 'Text';
+      case 'fig':
+        return 'Figma';
+      case 'sketch':
+        return 'Sketch';
+      default:
+        return extension.toUpperCase();
+    }
+  };
 
   return (
-    <Box
-      sx={{
-        mt: 2,
-        border: "1px solid",
-        borderColor: "divider",
-        borderRadius: 1,
-        bgcolor: "background.paper",
-        maxHeight: "150px",
-        minHeight: "80px",
-        overflowY: "auto",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <Box
-        sx={{
-          p: 1,
-          borderBottom: "1px solid",
-          borderColor: "divider",
-          bgcolor: "background.paper",
-          position: "sticky",
-          top: 0,
-          zIndex: 1,
+    <Box sx={{ mt: 2, width: '100%' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+        <DocumentIcon sx={{ color: 'primary.main' }} />
+        <Typography 
+          variant="h6" 
+          sx={{ 
+            flexGrow: 1,
+            color: 'text.primary',
+            fontWeight: 600
+          }}
+        >
+          Project Documents
+        </Typography>
+        <input
+          type="file"
+          id="document-upload"
+          hidden
+          multiple
+          onChange={handleFileUpload}
+          accept=".pdf,.doc,.docx,.txt,.fig,.sketch,.xlsx,.xls,.csv"
+        />
+        <label htmlFor="document-upload">
+          <Button
+            component="span"
+            variant="outlined"
+            startIcon={isUploading ? <CircularProgress size={16} /> : <CloudUploadIcon />}
+            disabled={isUploading}
+            size="small"
+            sx={{
+              color: 'text.primary',
+              borderColor: alpha(theme.palette.primary.main, 0.5),
+              '&:hover': {
+                borderColor: 'primary.main',
+                bgcolor: alpha(theme.palette.primary.main, 0.04),
+              }
+            }}
+          >
+            {isUploading ? 'Uploading...' : 'Upload'}
+          </Button>
+        </label>
+      </Box>
+
+      {documents && documents.length > 0 && (
+        <Paper 
+          sx={{ 
+            p: 2, 
+            bgcolor: alpha(theme.palette.background.paper, 0.8),
+            border: `1px solid ${alpha(theme.palette.divider, 0.12)}`,
+            backdropFilter: 'blur(10px)'
+          }}
+        >
+          <List dense>
+            {documents.map((doc, index) => (
+              <ListItem 
+                key={index} 
+                divider={index !== documents.length - 1}
+                sx={{
+                  '&:hover': {
+                    bgcolor: alpha(theme.palette.action.hover, 0.5),
+                    borderRadius: 1,
+                  }
+                }}
+              >
+                <ListItemIcon>
+                  {getFileIcon(doc.name)}
+                </ListItemIcon>
+                <ListItemText
+                  primary={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography sx={{ color: 'text.primary', fontWeight: 500 }}>
+                        {doc.name}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          bgcolor: alpha(theme.palette.primary.main, 0.1),
+                          color: 'primary.main',
+                          px: 1,
+                          py: 0.25,
+                          borderRadius: 1,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {getFileTypeLabel(doc.name)}
+                      </Typography>
+                    </Box>
+                  }
+                  secondary={
+                    <Box>
+                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                        Uploaded: {new Date(doc.uploadedAt).toLocaleDateString()}
+                      </Typography>
+                      {doc.uploadedBy && (
+                        <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
+                          By: {doc.uploadedBy.name || doc.uploadedBy.email}
+                        </Typography>
+                      )}
+                    </Box>
+                  }
+                />
+                <ListItemSecondaryAction>
+                  <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    <IconButton
+                      edge="end"
+                      onClick={() => window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(doc.url)}`, "_blank")}
+                      size="small"
+                      sx={{ 
+                        color: 'text.secondary',
+                        '&:hover': { 
+                          color: 'primary.main',
+                          bgcolor: alpha(theme.palette.primary.main, 0.08)
+                        }
+                      }}
+                    >
+                      <VisibilityIcon />
+                    </IconButton>
+                    <IconButton
+                      edge="end"
+                      onClick={() => {
+                        const link = document.createElement("a");
+                        link.href = doc.url;
+                        link.download = doc.name;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }}
+                      size="small"
+                      sx={{
+                        color: 'text.secondary',
+                        '&:hover': { 
+                          color: 'primary.main',
+                          bgcolor: alpha(theme.palette.primary.main, 0.08)
+                        }
+                      }}
+                    >
+                      <DownloadIcon />
+                    </IconButton>
+                    <IconButton
+                      edge="end"
+                      onClick={() => handleDeleteDocument(doc)}
+                      size="small"
+                      sx={{
+                        color: 'text.secondary',
+                        '&:hover': { 
+                          color: 'error.main',
+                          bgcolor: alpha(theme.palette.error.main, 0.08)
+                        }
+                      }}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Box>
+                </ListItemSecondaryAction>
+              </ListItem>
+            ))}
+          </List>
+        </Paper>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => !isDeleting && setDeleteDialogOpen(false)}
+        PaperProps={{
+          sx: { 
+            borderRadius: 3,
+            bgcolor: 'background.paper'
+          }
         }}
       >
-        <Box display="flex" alignItems="center" justifyContent="space-between">
-          <Typography variant="h6">Documents</Typography>
-          <Box>
-            <input
-              accept=".pdf,.doc,.docx,.txt,.xls,.xlsx"
-              style={{ display: "none" }}
-              id="document-upload"
-              type="file"
-              multiple
-              onChange={handleFileUpload}
-            />
-            <label htmlFor="document-upload">
-              <Button
-                variant="contained"
-                component="span"
-                startIcon={
-                  isUploading ? (
-                    <CircularProgress size={20} />
-                  ) : (
-                    <CloudUploadIcon />
-                  )
-                }
-                disabled={isUploading}
-                sx={{ color: "white" }}
-              >
-                {isUploading ? "Uploading..." : "Upload Documents"}
-              </Button>
-            </label>
-          </Box>
-        </Box>
-
-
-        {error && (
-          <Alert severity="error" sx={{ mt: 1 }} onClose={() => setError(null)}>
-            {error}
-          </Alert>
-        )}
-      </Box>
-
-
-      <Box sx={{ overflowY: "auto", flex: 1, p: 1 }}>
-        {documents && documents.length > 0 ? (
-          documents.map((document, index) => (
-            <Paper
-              key={document?.url || index}
-              elevation={1}
-              sx={{
-                p: 1,
-                mb: 1,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                "&:hover": { bgcolor: "action.hover" },
-              }}
-            >
-              <Box>
-                <Typography variant="subtitle2">
-                  {index + 1}. {document?.name || "Unnamed Document"}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Uploaded by {getUploaderDisplayName(document)}
-                  {document?.uploadedAt &&
-                    ` on ${new Date(document.uploadedAt).toLocaleString()}`}
-                </Typography>
-              </Box>
-              <Box>
-                <IconButton
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDownload(document);
-                  }}
-                  size="small"
-                >
-                  <DownloadIcon />
-                </IconButton>
-                <IconButton
-                  onClick={(e) => handleDeleteClick(document, e)}
-                  size="small"
-                  color="error"
-                  disabled={isDeleting && selectedDoc?.url === document?.url}
-                >
-                  {isDeleting && selectedDoc?.url === document?.url ? (
-                    <CircularProgress size={20} />
-                  ) : (
-                    <DeleteIcon />
-                  )}
-                </IconButton>
-              </Box>
-            </Paper>
-          ))
-        ) : (
-          <Typography color="text.secondary" align="center" sx={{ py: 2 }}>
-            No documents uploaded yet
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, color: 'text.primary' }}>
+            Delete Document
           </Typography>
-        )}
-      </Box>
-
-
-      <Dialog
-        open={deleteConfirmOpen}
-        onClose={() => !isDeleting && setDeleteConfirmOpen(false)}
-      >
-        <DialogTitle>Delete Document</DialogTitle>
+        </DialogTitle>
         <DialogContent>
-          <Typography>
-            Are you sure you want to delete "{selectedDoc?.name || 'this document'}"? This action
-            cannot be undone.
+          <Typography sx={{ color: 'text.primary' }}>
+            Are you sure you want to delete "{documentToDelete?.name}"? This action cannot be undone.
           </Typography>
-          {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {error}
-            </Alert>
-          )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ p: 3 }}>
           <Button
-            onClick={() => setDeleteConfirmOpen(false)}
+            onClick={() => setDeleteDialogOpen(false)}
             disabled={isDeleting}
+            sx={{ color: "text.secondary", textTransform: "none" }}
           >
             Cancel
           </Button>
           <Button
-            onClick={confirmDelete}
+            onClick={confirmDeleteDocument}
+            variant="contained"
             color="error"
             disabled={isDeleting}
-            startIcon={isDeleting ? <CircularProgress size={20} /> : null}
+            startIcon={isDeleting ? <CircularProgress size={16} /> : <DeleteIcon />}
+            sx={{ 
+              textTransform: "none",
+              fontWeight: 600,
+              borderRadius: 2
+            }}
           >
-            {isDeleting ? "Deleting..." : "Delete"}
+            {isDeleting ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -388,6 +326,56 @@ const DocumentManagement = ({
   );
 };
 
+// Enhanced document upload handler
+const handleDocumentUpload = async (files) => {
+  setIsUploading(true);
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error("User not authenticated");
+    }
+
+    const uploadPromises = files.map(async (file) => {
+      const filename = `${Date.now()}_${file.name}`;
+      const storagePath = `documents/${boardId}/${filename}`;
+      const storageRef = ref(storage, storagePath);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      return new Promise((resolve, reject) => {
+        uploadTask.on(
+          "state_changed",
+          null,
+          (error) => reject(error),
+          async () => {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve({
+              name: file.name,
+              url: downloadURL,
+              storagePath: storagePath, // Store the storage path for deletion
+              uploadedAt: new Date().toISOString(),
+              uploadedBy: {
+                uid: currentUser.uid,
+                name: currentUser.displayName,
+                email: currentUser.email,
+              },
+            });
+          }
+        );
+      });
+    });
+
+    const uploadedDocs = await Promise.all(uploadPromises);
+
+    const boardRef = doc(db, "boards", boardId);
+    await updateDoc(boardRef, {
+      documents: arrayUnion(...uploadedDocs),
+    });
+  } catch (error) {
+    console.error("Error uploading documents:", error);
+    setError("Failed to upload documents");
+  } finally {
+    setIsUploading(false);
+  }
+};
 
 export default DocumentManagement;
-
