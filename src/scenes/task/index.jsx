@@ -19,6 +19,11 @@ import {
   ListItemIcon,
   ListItemText,
   ListItemSecondaryAction,
+  Paper,
+  Chip,
+  Divider,
+  useTheme,
+  alpha,
 } from "@mui/material";
 import {
   DragHandle,
@@ -29,118 +34,359 @@ import {
   Delete as DeleteIcon,
   Description as DocumentIcon,
   InsertDriveFile as FileIcon,
-} from "@mui/icons-material";
-import { useParams, useNavigate } from "react-router-dom";
-import {
-  collection,
-  doc,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  onSnapshot,
-  arrayUnion,
-} from "firebase/firestore";
-import { db } from "../../utils/firebase";
-// import IconButton from '@mui/material/IconButton';
-//import VisibilityIcon from "@mui/icons-material/Visibility";
-//import DownloadIcon from "@mui/icons-material/Download";
-//import CloudUploadIcon from '@mui/icons-material/CloudUpload';
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from "../../utils/firebase";
-import DocumentManagement from "../documentManagement";
-import {
   Visibility as VisibilityIcon,
   CloudUpload as CloudUploadIcon,
   Download as DownloadIcon,
+  TaskAlt as TaskAltIcon,
+  Schedule as ScheduleIcon,
+  PauseCircle as PauseCircleIcon,
+  CheckCircle as CheckCircleIcon,
+  TableChart as ExcelIcon,
 } from "@mui/icons-material";
-import { uploadBytesResumable } from "firebase/storage";
-// import { arrayUnion } from 'firebase/firestore';
+import { useParams, useNavigate } from "react-router-dom";
 
+// Firebase imports
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  collection,
+  onSnapshot,
+  addDoc,
+  deleteDoc,
+  arrayUnion,
+  arrayRemove,
+} from "firebase/firestore";
+import {
+  ref,
+  uploadBytesResumable,
+  getDownloadURL,
+  deleteObject,
+} from "firebase/storage";
+import { auth, db, storage } from "../../utils/firebase";
 
+// Background images array
 const backgroundImages = [
   "/assets/bg1.jpg",
   "/assets/bg2.jpg",
   "/assets/bg3.jpg",
-  "/assets/bg4.jpg",
-  "/assets/bg5.jpg",
-  "/assets/bg7.jpg",
-  "/assets/bg8.jpg",
-  "/assets/bg9.jpg",
-  "/assets/bg10.jpg",
-  "/assets/bg11.jpg",
-  "/assets/bg12.jpg",
-  "/assets/bg13.jpg",
-  "/assets/bg14.jpg",
-  "/assets/bg15.jpg",
-  "/assets/bg16.jpg",
-  "/assets/bg17.jpg",
-  "/assets/bg18.jpg",
-  "/assets/bg19.jpg",
-  "/assets/bg20.jpg",
-  "/assets/bg21.jpg",
-  "/assets/bg22.jpg",
-  "/assets/bg23.jpg",
-  "/assets/bg24.jpg",
-  "/assets/bg25.jpg",
 ];
 
-// const FileList = ({ documents }) => {
-//   if (!documents || documents.length === 0) return null;
+// Enhanced DocumentManagement Component
+const DocumentManagement = ({ documents, onUpload, isUploading, boardId }) => {
+  const theme = useTheme();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-//   return (
-//     <Box sx={{ mt: 2, bgcolor: 'background.paper', borderRadius: 1, overflow: 'hidden' }}>
-//       <List dense>
-//         {documents.map((doc, index) => (
-//           <ListItem key={index} divider={index !== documents.length - 1}>
-//             <ListItemIcon>
-//               <FileIcon />
-//             </ListItemIcon>
-//             <ListItemText
-//               primary={doc.name}
-//               secondary={new Date(doc.uploadedAt).toLocaleDateString()}
-//             />
-//             <ListItemSecondaryAction>
-//               <IconButton
-//                 edge="end"
-//                 onClick={() => {
-//                   window.open(
-//                     `https://docs.google.com/viewer?url=${encodeURIComponent(doc.url)}`,
-//                     "_blank"
-//                   );
-//                 }}
-//                 size="small"
-//               >
-//                 <VisibilityIcon />
-//               </IconButton>
-//               <IconButton
-//                 edge="end"
-//                 onClick={() => {
-//                   const link = document.createElement("a");
-//                   link.href = doc.url;
-//                   link.download = doc.name;
-//                   document.body.appendChild(link);
-//                   link.click();
-//                   document.body.removeChild(link);
-//                 }}
-//                 size="small"
-//                 sx={{ ml: 1 }}
-//               >
-//                 <DownloadIcon />
-//               </IconButton>
-//             </ListItemSecondaryAction>
-//           </ListItem>
-//         ))}
-//       </List>
-//     </Box>
-//   );
-// };
+  const handleFileUpload = (event) => {
+    const files = Array.from(event.target.files);
+    if (files.length > 0 && onUpload) {
+      onUpload(files);
+    }
+  };
+
+  const handleDeleteDocument = async (document) => {
+    setDocumentToDelete(document);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteDocument = async () => {
+    if (!documentToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      // Delete from Firebase Storage
+      if (documentToDelete.storagePath) {
+        const storageRef = ref(storage, documentToDelete.storagePath);
+        await deleteObject(storageRef);
+      }
+
+      // Remove from Firestore
+      const boardRef = doc(db, "boards", boardId);
+      await updateDoc(boardRef, {
+        documents: arrayRemove(documentToDelete),
+      });
+
+      setDeleteDialogOpen(false);
+      setDocumentToDelete(null);
+    } catch (error) {
+      console.error("Error deleting document:", error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const getFileIcon = (fileName) => {
+    const extension = fileName.split(".").pop().toLowerCase();
+    if (["xlsx", "xls", "csv"].includes(extension)) {
+      return <ExcelIcon color="success" />;
+    }
+    return <FileIcon color="primary" />;
+  };
+
+  const getFileTypeLabel = (fileName) => {
+    const extension = fileName.split(".").pop().toLowerCase();
+    switch (extension) {
+      case "xlsx":
+      case "xls":
+        return "Excel";
+      case "csv":
+        return "CSV";
+      case "pdf":
+        return "PDF";
+      case "doc":
+      case "docx":
+        return "Word";
+      case "txt":
+        return "Text";
+      case "fig":
+        return "Figma";
+      case "sketch":
+        return "Sketch";
+      default:
+        return extension.toUpperCase();
+    }
+  };
+
+  return (
+    <Box sx={{ mt: 2, width: "100%" }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
+        <DocumentIcon sx={{ color: "primary.main" }} />
+        <Typography
+          variant="h6"
+          sx={{
+            flexGrow: 1,
+            color: "text.primary",
+            fontWeight: 600,
+          }}
+        >
+          Project Documents
+        </Typography>
+        <input
+          type="file"
+          id="document-upload"
+          hidden
+          multiple
+          onChange={handleFileUpload}
+          accept=".pdf,.doc,.docx,.txt,.fig,.sketch,.xlsx,.xls,.csv"
+        />
+        <label htmlFor="document-upload">
+          <Button
+            component="span"
+            variant="outlined"
+            startIcon={
+              isUploading ? <CircularProgress size={16} /> : <CloudUploadIcon />
+            }
+            disabled={isUploading}
+            size="small"
+            sx={{
+              color: "text.primary",
+              borderColor: alpha(theme.palette.primary.main, 0.5),
+              "&:hover": {
+                borderColor: "primary.main",
+                bgcolor: alpha(theme.palette.primary.main, 0.04),
+              },
+            }}
+          >
+            {isUploading ? "Uploading..." : "Upload"}
+          </Button>
+        </label>
+      </Box>
+
+      {documents && documents.length > 0 && (
+        <Paper
+          sx={{
+            p: 2,
+            bgcolor: alpha(theme.palette.background.paper, 0.8),
+            border: `1px solid ${alpha(theme.palette.divider, 0.12)}`,
+            backdropFilter: "blur(10px)",
+          }}
+        >
+          <List dense>
+            {documents.map((doc, index) => (
+              <ListItem
+                key={index}
+                divider={index !== documents.length - 1}
+                sx={{
+                  "&:hover": {
+                    bgcolor: alpha(theme.palette.action.hover, 0.5),
+                    borderRadius: 1,
+                  },
+                }}
+              >
+                <ListItemIcon>{getFileIcon(doc.name)}</ListItemIcon>
+                <ListItemText
+                  primary={
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Typography
+                        sx={{ color: "text.primary", fontWeight: 500 }}
+                      >
+                        {doc.name}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          bgcolor: alpha(theme.palette.primary.main, 0.1),
+                          color: "primary.main",
+                          px: 1,
+                          py: 0.25,
+                          borderRadius: 1,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {getFileTypeLabel(doc.name)}
+                      </Typography>
+                    </Box>
+                  }
+                  secondary={
+                    <Box>
+                      <Typography
+                        variant="body2"
+                        sx={{ color: "text.secondary" }}
+                      >
+                        Uploaded:{" "}
+                        {new Date(doc.uploadedAt).toLocaleDateString()}
+                      </Typography>
+                      {doc.uploadedBy && (
+                        <Typography
+                          variant="body2"
+                          sx={{ color: "text.secondary", fontStyle: "italic" }}
+                        >
+                          By: {doc.uploadedBy.name || doc.uploadedBy.email}
+                        </Typography>
+                      )}
+                    </Box>
+                  }
+                />
+                <ListItemSecondaryAction>
+                  <Box sx={{ display: "flex", gap: 0.5 }}>
+                    <IconButton
+                      edge="end"
+                      onClick={() =>
+                        window.open(
+                          `https://docs.google.com/viewer?url=${encodeURIComponent(
+                            doc.url
+                          )}`,
+                          "_blank"
+                        )
+                      }
+                      size="small"
+                      sx={{
+                        color: "text.secondary",
+                        "&:hover": {
+                          color: "primary.main",
+                          bgcolor: alpha(theme.palette.primary.main, 0.08),
+                        },
+                      }}
+                    >
+                      <VisibilityIcon />
+                    </IconButton>
+                    <IconButton
+                      edge="end"
+                      onClick={() => {
+                        const link = document.createElement("a");
+                        link.href = doc.url;
+                        link.download = doc.name;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }}
+                      size="small"
+                      sx={{
+                        color: "text.secondary",
+                        "&:hover": {
+                          color: "primary.main",
+                          bgcolor: alpha(theme.palette.primary.main, 0.08),
+                        },
+                      }}
+                    >
+                      <DownloadIcon />
+                    </IconButton>
+                    <IconButton
+                      edge="end"
+                      onClick={() => handleDeleteDocument(doc)}
+                      size="small"
+                      sx={{
+                        color: "text.secondary",
+                        "&:hover": {
+                          color: "error.main",
+                          bgcolor: alpha(theme.palette.error.main, 0.08),
+                        },
+                      }}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Box>
+                </ListItemSecondaryAction>
+              </ListItem>
+            ))}
+          </List>
+        </Paper>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => !isDeleting && setDeleteDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            bgcolor: "background.paper",
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography
+            variant="h6"
+            sx={{ fontWeight: 600, color: "text.primary" }}
+          >
+            Delete Document
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: "text.primary" }}>
+            Are you sure you want to delete "{documentToDelete?.name}"? This
+            action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 3 }}>
+          <Button
+            onClick={() => setDeleteDialogOpen(false)}
+            disabled={isDeleting}
+            sx={{ color: "text.secondary", textTransform: "none" }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={confirmDeleteDocument}
+            variant="contained"
+            color="error"
+            disabled={isDeleting}
+            startIcon={
+              isDeleting ? <CircularProgress size={16} /> : <DeleteIcon />
+            }
+            sx={{
+              textTransform: "none",
+              fontWeight: 600,
+              borderRadius: 2,
+            }}
+          >
+            {isDeleting ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
 
 const Task = () => {
+  const theme = useTheme();
   const { boardId } = useParams();
   const navigate = useNavigate();
+
+  // State management
   const [board, setBoard] = useState(null);
-  const [boardDocument, setBoardDocument] = useState(null);
   const [tasks, setTasks] = useState({
     todo: [],
     doing: [],
@@ -156,10 +402,10 @@ const Task = () => {
   const [selectedColumn, setSelectedColumn] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
   const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [newChecklistItem, setNewChecklistItem] = useState("");
   const [documents, setDocuments] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
 
+  // Update board completion percentage
   const updateBoardCompletionPercentage = async (percentage) => {
     try {
       const boardRef = doc(db, "boards", boardId);
@@ -172,33 +418,17 @@ const Task = () => {
     }
   };
 
-  useEffect(() => {
-    const percentage = calculateCompletionPercentage();
-    updateBoardCompletionPercentage(percentage);
-  }, [tasks]);
-
+  // Calculate completion percentage
   const calculateCompletionPercentage = () => {
-    const totalTasks =
-      tasks.todo.length +
-      tasks.doing.length +
-      tasks.onHold.length +
-      tasks.done.length;
-
+    const totalTasks = Object.values(tasks).flat().length;
     const completedTasks = tasks.done.length;
-
     if (totalTasks === 0) return 0;
-
-    const percentage = Math.round((completedTasks / totalTasks) * 100);
-    return Math.min(percentage, 100);
+    return Math.round((completedTasks / totalTasks) * 100);
   };
 
+  // Get board status
   const getBoardStatus = useCallback(() => {
-    const totalTasks =
-      tasks.todo.length +
-      tasks.doing.length +
-      tasks.onHold.length +
-      tasks.done.length;
-
+    const totalTasks = Object.values(tasks).flat().length;
     if (
       tasks.doing.length > 0 ||
       (tasks.done.length > 0 && totalTasks > tasks.done.length)
@@ -211,10 +441,15 @@ const Task = () => {
     }
   }, [tasks]);
 
+  // Update completion percentage when tasks change
+  useEffect(() => {
+    const percentage = calculateCompletionPercentage();
+    updateBoardCompletionPercentage(percentage);
+  }, [tasks]);
+
+  // Update board status when tasks change
   useEffect(() => {
     const status = getBoardStatus();
-    console.log("Board Status:", status);
-
     const updateBoardStatus = async () => {
       try {
         const boardRef = doc(db, "boards", boardId);
@@ -226,10 +461,10 @@ const Task = () => {
         setError("Failed to update board status");
       }
     };
-
     updateBoardStatus();
-  }, [tasks]);
+  }, [tasks, getBoardStatus, boardId]);
 
+  // Fetch board data
   const fetchBoardData = async () => {
     try {
       const boardRef = doc(db, "boards", boardId);
@@ -247,7 +482,6 @@ const Task = () => {
         completionPercentage: data.completionPercentage || 0,
       });
 
-      // Set documents
       setDocuments(data.documents || []);
     } catch (err) {
       console.error("Error fetching board:", err);
@@ -256,6 +490,7 @@ const Task = () => {
     }
   };
 
+  // Fetch tasks with real-time updates
   const fetchTasks = () => {
     try {
       const tasksRef = collection(db, `boards/${boardId}/tasks`);
@@ -290,6 +525,7 @@ const Task = () => {
     }
   };
 
+  // Listen for board document changes
   useEffect(() => {
     const unsubscribeBoard = onSnapshot(doc(db, "boards", boardId), (doc) => {
       if (doc.exists()) {
@@ -306,12 +542,19 @@ const Task = () => {
     return () => unsubscribeBoard();
   }, [boardId]);
 
+  // Enhanced document upload handler
   const handleDocumentUpload = async (files) => {
     setIsUploading(true);
     try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        throw new Error("User not authenticated");
+      }
+
       const uploadPromises = files.map(async (file) => {
         const filename = `${Date.now()}_${file.name}`;
-        const storageRef = ref(storage, `documents/${boardId}/${filename}`);
+        const storagePath = `documents/${boardId}/${filename}`;
+        const storageRef = ref(storage, storagePath);
         const uploadTask = uploadBytesResumable(storageRef, file);
 
         return new Promise((resolve, reject) => {
@@ -324,7 +567,13 @@ const Task = () => {
               resolve({
                 name: file.name,
                 url: downloadURL,
+                storagePath: storagePath, // Store the storage path for deletion
                 uploadedAt: new Date().toISOString(),
+                uploadedBy: {
+                  uid: currentUser.uid,
+                  name: currentUser.displayName,
+                  email: currentUser.email,
+                },
               });
             }
           );
@@ -339,28 +588,37 @@ const Task = () => {
       });
     } catch (error) {
       console.error("Error uploading documents:", error);
-      throw error;
+      setError("Failed to upload documents");
     } finally {
       setIsUploading(false);
     }
   };
 
+  // Initialize data
   useEffect(() => {
     fetchBoardData();
     const unsubscribe = fetchTasks();
     return () => unsubscribe && unsubscribe();
   }, [boardId, navigate]);
 
+  // Drag and Drop handlers
   const handleDragStart = (e, taskId, sourceColumn) => {
     setDragging({ taskId, sourceColumn });
     e.dataTransfer.setData("text/plain", taskId);
+    e.dataTransfer.effectAllowed = "move";
   };
 
-  const handleDragOver = (e) => e.preventDefault();
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
 
   const handleDrop = async (e, targetColumn) => {
     e.preventDefault();
-    if (!dragging || dragging.sourceColumn === targetColumn) return;
+    if (!dragging || dragging.sourceColumn === targetColumn) {
+      setDragging(null);
+      return;
+    }
 
     try {
       const taskRef = doc(db, `boards/${boardId}/tasks/${dragging.taskId}`);
@@ -398,6 +656,7 @@ const Task = () => {
     setDragging(null);
   };
 
+  // Task management handlers
   const handleAddTask = (column) => {
     setSelectedColumn(column);
     setIsAddTaskDialogOpen(true);
@@ -444,6 +703,7 @@ const Task = () => {
         updatedAt: new Date(),
       });
       setIsEditTaskDialogOpen(false);
+      setNewTaskTitle("");
     } catch (err) {
       console.error("Error updating task:", err);
       setError("Failed to update task");
@@ -457,23 +717,6 @@ const Task = () => {
     } catch (err) {
       console.error("Error deleting task:", err);
       setError("Failed to delete task");
-    }
-  };
-
-  const handleAddChecklistItem = async (task) => {
-    if (!newChecklistItem.trim()) return;
-    try {
-      const taskRef = doc(db, `boards/${boardId}/tasks/${task.id}`);
-      const newItem = {
-        id: Date.now().toString(),
-        text: newChecklistItem.trim(),
-        completed: false,
-      };
-      await updateDoc(taskRef, { checklist: [...task.checklist, newItem] });
-      setNewChecklistItem("");
-    } catch (err) {
-      console.error("Error adding checklist item:", err);
-      setError("Failed to add checklist item");
     }
   };
 
@@ -493,259 +736,69 @@ const Task = () => {
     }
   };
 
-  const getDocumentName = (url) => {
-    if (!url) return "";
-    try {
-      const decodedUrl = decodeURIComponent(url);
-      return decodedUrl.split("/").pop().split(/[#?]/)[0];
-    } catch (e) {
-      return url.split("/").pop().split(/[#?]/)[0];
+  // UI Helper functions
+  const getColumnIcon = (columnId) => {
+    switch (columnId) {
+      case "todo":
+        return <ScheduleIcon />;
+      case "doing":
+        return <TaskAltIcon />;
+      case "onHold":
+        return <PauseCircleIcon />;
+      case "done":
+        return <CheckCircleIcon />;
+      default:
+        return <TaskAltIcon />;
     }
   };
 
-  const DocumentDisplay = () => {
-    const [isUploading, setIsUploading] = useState(false);
-    const [uploadError, setUploadError] = useState(null);
+  const getColumnColor = (columnId) => {
+    const isDark = theme.palette.mode === "dark";
 
-    const handleFileUpload = async (event) => {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      setIsUploading(true);
-      setUploadError(null);
-
-      try {
-        // Create storage reference
-        const storageRef = ref(
-          storage,
-          `documents/${boardId}/${Date.now()}_${file.name}`
-        );
-
-        // Upload file
-        const uploadTask = uploadBytesResumable(storageRef, file);
-
-        uploadTask.on(
-          "state_changed",
-          (snapshot) => {
-            // You can add progress tracking here if needed
-            const progress =
-              (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            console.log("Upload progress: ", progress);
-          },
-          (error) => {
-            console.error("Error uploading document:", error);
-            setUploadError("Failed to upload document");
-            setIsUploading(false);
-          },
-          async () => {
-            // Get download URL after successful upload
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-
-            // Update Firestore document
-            const boardRef = doc(db, "boards", boardId);
-            await updateDoc(boardRef, {
-              documentURL: downloadURL,
-            });
-
-            // Update local state
-            setBoardDocument({
-              url: downloadURL,
-              name: file.name,
-            });
-
-            setIsUploading(false);
-          }
-        );
-      } catch (error) {
-        console.error("Error in file upload:", error);
-        setUploadError("Failed to upload document");
-        setIsUploading(false);
-      }
-    };
-
-    const getDocumentName = (url) => {
-      if (!url) return "";
-      try {
-        const decodedUrl = decodeURIComponent(url);
-        return decodedUrl.split("/").pop().split(/[#?]/)[0];
-      } catch (e) {
-        return url.split("/").pop().split(/[#?]/)[0];
-      }
-    };
-
-    if (!boardDocument && !isUploading) return null;
-
-    return (
-      <Box
-        sx={{
-          mt: 2,
-          p: 2,
-          border: "1px solid",
-          borderColor: "divider",
-          borderRadius: 1,
-          bgcolor: "background.paper",
-          display: "flex",
-          flexDirection: "column",
-          gap: 1,
-        }}
-      >
-        {/* Document Information */}
-        {boardDocument && (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <DocumentIcon sx={{ color: "primary.main" }} />
-            <Typography
-              variant="body2"
-              sx={{ flexGrow: 1, overflow: "hidden", textOverflow: "ellipsis" }}
-            >
-              {boardDocument.name || getDocumentName(boardDocument.url)}
-            </Typography>
-
-            {/* Action Buttons */}
-            <Box sx={{ display: "flex", gap: 1 }}>
-              {/* Preview Button */}
-              <IconButton
-                onClick={() => {
-                  const previewUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(
-                    boardDocument.url
-                  )}`;
-                  window.open(previewUrl, "_blank");
-                }}
-                size="small"
-                sx={{ color: "primary.main" }}
-              >
-                <VisibilityIcon />
-              </IconButton>
-
-              {/* Download Button */}
-              <IconButton
-                onClick={() => {
-                  const link = document.createElement("a");
-                  link.href = boardDocument.url;
-                  link.download =
-                    boardDocument.name || getDocumentName(boardDocument.url);
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                }}
-                size="small"
-                sx={{ color: "success.main" }}
-              >
-                <DownloadIcon />
-              </IconButton>
-            </Box>
-          </Box>
-        )}
-
-        {/* Upload Section */}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <input
-            type="file"
-            id="board-document-upload"
-            hidden
-            onChange={handleFileUpload}
-            accept=".pdf,.doc,.docx,.txt"
-          />
-          <label htmlFor="board-document-upload">
-            <IconButton
-              component="span"
-              disabled={isUploading}
-              sx={{
-                color: "secondary.main",
-                "&:hover": {
-                  bgcolor: "secondary.light",
-                },
-              }}
-            >
-              {isUploading ? (
-                <CircularProgress size={24} />
-              ) : (
-                <CloudUploadIcon />
-              )}
-            </IconButton>
-          </label>
-          <Typography variant="body2" color="text.secondary">
-            {isUploading ? "Uploading..." : "Upload Document"}
-          </Typography>
-        </Box>
-
-        {/* Error Message */}
-        {uploadError && (
-          <Typography color="error" variant="body2">
-            {uploadError}
-          </Typography>
-        )}
-      </Box>
-    );
+    switch (columnId) {
+      case "todo":
+        return isDark ? "#64b5f6" : "#1976d2";
+      case "doing":
+        return isDark ? "#ffb74d" : "#ed6c02";
+      case "onHold":
+        return isDark ? "#ce93d8" : "#9c27b0";
+      case "done":
+        return isDark ? "#81c784" : "#2e7d32";
+      default:
+        return isDark ? "#64b5f6" : "#1976d2";
+    }
   };
-  //   return (
-  //     <Box sx={{ /* existing styles */ }}>
-  //       {/* existing document info */}
-  //       <Box sx={{ display: "flex", gap: 1 }}>
-  //         {/* Preview and Download buttons */}
-  //         <IconButton
-  //           onClick={() => {
-  //             const previewUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(
-  //               boardDocument.url
-  //             )}`;
-  //             window.open(previewUrl, "_blank");
-  //           }}
-  //         >
-  //           <VisibilityIcon />
-  //         </IconButton>
-  //         <IconButton
-  //           onClick={() => {
-  //             const link = document.createElement("a");
-  //             link.href = boardDocument.url;
-  //             link.download = documentName;
-  //             link.click();
-  //           }}
-  //         >
-  //           <DownloadIcon />
-  //         </IconButton>
 
-  //         {/* Upload button */}
-  //         <IconButton
-  //           component="label"
-  //           disabled={isUploading}
-  //           sx={{
-  //             color: "secondary.main",
-  //             "&:hover": {
-  //               backgroundColor: !isUploading ? "secondary.light" : undefined,
-  //               color: !isUploading ? "secondary.dark" : undefined,
-  //             },
-  //           }}
-  //         >
-  //           <input
-  //             type="file"
-  //             hidden
-  //             onChange={handleFileUpload}
-  //           />
-  //           {isUploading ? (
-  //             <CircularProgress size={24} />
-  //           ) : (
-  //             <CloudUploadIcon />
-  //           )}
-  //         </IconButton>
-  //       </Box>
-  //     </Box>
-  //   );
-  // };
+  const getBackgroundGradient = () => {
+    const isDark = theme.palette.mode === "dark";
 
+    if (isDark) {
+      return "linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #424242 100%)";
+    } else {
+      return "linear-gradient(135deg, #e3f2fd 0%, #bbdefb 50%, #90caf9 100%)";
+    }
+  };
+
+  // Render column component
   const renderColumn = (columnId, columnTitle) => (
-    <Box
+    <Paper
+      elevation={3}
       sx={{
-        flex: "0 0 280px",
+        flex: "0 0 320px",
         mx: 1,
-        p: 1.5,
-        bgcolor: "background.paper",
+        p: 2,
         borderRadius: 3,
-        boxShadow: 1,
         height: "fit-content",
-        maxHeight: "90vh",
+        maxHeight: "85vh",
         overflowY: "auto",
-        backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url(${board.backgroundImage})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
+        background: alpha(theme.palette.background.paper, 0.9),
+        border: `2px solid ${alpha(getColumnColor(columnId), 0.3)}`,
+        backdropFilter: "blur(10px)",
+        "&:hover": {
+          boxShadow: theme.palette.mode === "dark" ? 8 : 6,
+          transform: "translateY(-2px)",
+          transition: "all 0.3s ease",
+        },
       }}
       onDragOver={handleDragOver}
       onDrop={(e) => handleDrop(e, columnId)}
@@ -755,107 +808,176 @@ const Task = () => {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          mb: 1,
-          position: "sticky",
-          top: 0,
-          bgcolor: "background.paper",
-          zIndex: 1,
-          py: 0.5,
+          mb: 2,
+          pb: 1,
+          borderBottom: `2px solid ${alpha(getColumnColor(columnId), 0.3)}`,
         }}
       >
-        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-          {columnTitle} ({tasks[columnId].length})
-        </Typography>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          {React.cloneElement(getColumnIcon(columnId), {
+            sx: { color: getColumnColor(columnId) },
+          })}
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 600,
+              color: getColumnColor(columnId),
+            }}
+          >
+            {columnTitle}
+          </Typography>
+          <Chip
+            label={tasks[columnId].length}
+            size="small"
+            sx={{
+              bgcolor: getColumnColor(columnId),
+              color: theme.palette.mode === "dark" ? "#000" : "#fff",
+              fontWeight: "bold",
+            }}
+          />
+        </Box>
         <IconButton
           size="small"
           onClick={() => handleAddTask(columnId)}
-          sx={{ p: 0.5 }}
+          sx={{
+            bgcolor: alpha(getColumnColor(columnId), 0.1),
+            "&:hover": { bgcolor: alpha(getColumnColor(columnId), 0.2) },
+          }}
         >
-          <AddIcon fontSize="small" />
+          <AddIcon sx={{ color: getColumnColor(columnId) }} />
         </IconButton>
       </Box>
 
-      <Box
-        sx={{ display: "flex", flexDirection: "column", gap: 1, minHeight: 40 }}
-      >
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {tasks[columnId].map((task) => (
-          <Box
+          <Paper
             key={task.id}
+            elevation={2}
             draggable
             onDragStart={(e) => handleDragStart(e, task.id, columnId)}
             sx={{
-              p: 1.5,
-              bgcolor: "rgba(0, 0, 0, 0.6)",
+              p: 2,
               borderRadius: 2,
               cursor: "move",
-              "&:hover": { bgcolor: "rgba(0, 0, 0, 0.7)", boxShadow: 1 },
-              border: "1px solid",
-              borderColor: "divider",
+              background: alpha(theme.palette.background.paper, 0.8),
+              border: `1px solid ${alpha(getColumnColor(columnId), 0.2)}`,
               backdropFilter: "blur(5px)",
+              "&:hover": {
+                boxShadow: theme.palette.mode === "dark" ? 6 : 4,
+                transform: "translateY(-1px)",
+                transition: "all 0.2s ease",
+              },
+              "&:active": {
+                cursor: "grabbing",
+                transform: "rotate(5deg)",
+                opacity: 0.8,
+              },
             }}
           >
             <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
               <DragHandle
                 sx={{
-                  color: "text.secondary",
-                  fontSize: 18,
+                  color: getColumnColor(columnId),
+                  fontSize: 20,
                   mt: 0.25,
                   cursor: "grab",
                 }}
               />
               <Box sx={{ flexGrow: 1 }}>
                 <Typography
-                  variant="body2"
-                  sx={{ lineHeight: 1.3, color: "white" }}
+                  variant="body1"
+                  sx={{
+                    lineHeight: 1.4,
+                    fontWeight: 500,
+                    color: "text.primary",
+                    mb: 1,
+                  }}
                 >
                   {task.title}
                 </Typography>
-                {task.checklist.length > 0 && (
+                {task.checklist && task.checklist.length > 0 && (
                   <Box
                     sx={{
                       display: "flex",
                       alignItems: "center",
-                      mt: 0.5,
-                      color: "text.secondary",
+                      gap: 1,
+                      p: 1,
+                      bgcolor: alpha(getColumnColor(columnId), 0.1),
+                      borderRadius: 1,
                     }}
                   >
                     <Checkbox
                       size="small"
                       checked={task.checklist.every((item) => item.completed)}
-                      sx={{ p: 0.5, color: "white" }}
+                      onChange={() => {
+                        const allCompleted = task.checklist.every(
+                          (item) => item.completed
+                        );
+                        task.checklist.forEach((item) => {
+                          if (item.completed === allCompleted) {
+                            handleToggleChecklistItem(task, item.id);
+                          }
+                        });
+                      }}
+                      sx={{
+                        p: 0,
+                        color: getColumnColor(columnId),
+                        "&.Mui-checked": { color: getColumnColor(columnId) },
+                      }}
                     />
-                    <Typography variant="caption" sx={{ color: "white" }}>
+                    <Typography
+                      variant="body2"
+                      sx={{ color: "text.secondary" }}
+                    >
                       {task.checklist.filter((item) => item.completed).length}/
-                      {task.checklist.length}
+                      {task.checklist.length} completed
                     </Typography>
                   </Box>
                 )}
               </Box>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleEditTask(task, columnId);
-                }}
-                sx={{ p: 0.5, color: "white" }}
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteTask(task.id);
-                }}
-                sx={{ p: 0.5, color: "white" }}
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEditTask(task, columnId);
+                  }}
+                  sx={{
+                    p: 0.5,
+                    bgcolor: alpha(theme.palette.action.hover, 0.5),
+                    color: "text.secondary",
+                    "&:hover": {
+                      bgcolor: alpha(theme.palette.primary.main, 0.1),
+                      color: "primary.main",
+                    },
+                  }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteTask(task.id);
+                  }}
+                  sx={{
+                    p: 0.5,
+                    bgcolor: alpha(theme.palette.action.hover, 0.5),
+                    color: "text.secondary",
+                    "&:hover": {
+                      bgcolor: alpha(theme.palette.error.main, 0.1),
+                      color: "error.main",
+                    },
+                  }}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Box>
             </Box>
-          </Box>
+          </Paper>
         ))}
       </Box>
-    </Box>
+    </Paper>
   );
 
   if (loading) return <CircularProgress sx={{ margin: "auto", mt: 4 }} />;
@@ -863,16 +985,8 @@ const Task = () => {
   if (error || !board)
     return (
       <Box m="20px">
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
-          <Button
-            startIcon={<ChevronLeftIcon />}
-            onClick={() => navigate("/boards")}
-          >
-            Back to Boards
-          </Button>
-        </Box>
         <Typography color="error" sx={{ mt: 2 }}>
-          {error}
+          {error || "Board not found"}
         </Typography>
       </Box>
     );
@@ -880,116 +994,152 @@ const Task = () => {
   return (
     <Box
       sx={{
-        height: "100vh",
+        minHeight: "100vh",
+        background: getBackgroundGradient(),
         display: "flex",
         flexDirection: "column",
-        bgcolor: "background.default",
       }}
     >
       {/* Header Section */}
-      <Box
+      <Paper
+        elevation={4}
         sx={{
           p: 3,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          bgcolor: "background.paper",
-          boxShadow: 1,
-          position: "sticky",
-          top: 0,
-          zIndex: 2,
-        }}
-      >
-        <Typography
-          variant="h4"
-          sx={{ fontWeight: 700, mb: 1, textAlign: "center" }}
-        >
-          {board.boardName}
-        </Typography>
-
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{
-            whiteSpace: "pre-line",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            textAlign: "center",
-          }}
-        >
-          {board.description || "Manage project tasks"}
-        </Typography>
-
-        {/* Document Display */}
-        <DocumentManagement
-          documents={documents}
-          onUpload={handleDocumentUpload}
-          isUploading={isUploading}
-        />
-
-        {/* <FileList documents={documents} /> */}
-
-        <Button
-          variant="contained"
-          color="secondary"
-          startIcon={<ChevronLeftIcon />}
-          onClick={() => navigate("/boards")}
-          sx={{
-            mt: 2,
-            boxShadow: 3,
-            borderRadius: 2,
-            textTransform: "uppercase",
-            fontWeight: 600,
-            px: 3,
-            py: 1,
-          }}
-        >
-          All Boards
-        </Button>
-      </Box>
-
-      {/* Progress Bar */}
-      <Box
-        sx={{
-          width: "80%",
-          mx: "auto",
-          mt: 2,
-          display: "flex",
-          alignItems: "center",
-          gap: 2,
+          m: 2,
+          borderRadius: 3,
+          background: alpha(theme.palette.background.paper, 0.9),
+          backdropFilter: "blur(10px)",
+          border: `1px solid ${alpha(theme.palette.divider, 0.12)}`,
         }}
       >
         <Box
           sx={{
-            flexGrow: 1,
-            height: 10,
-            bgcolor: "divider",
-            borderRadius: 5,
-            overflow: "hidden",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            mb: 2,
           }}
         >
+          <Typography
+            variant="h3"
+            sx={{
+              fontWeight: 700,
+              color: "text.primary",
+              textShadow:
+                theme.palette.mode === "dark"
+                  ? "none"
+                  : "0 2px 4px rgba(0,0,0,0.1)",
+            }}
+          >
+            {board.boardName}
+          </Typography>
+          <Button
+            variant="contained"
+            startIcon={<ChevronLeftIcon />}
+            onClick={() => navigate("/boards")}
+            sx={{
+              borderRadius: 3,
+              textTransform: "none",
+              fontWeight: 600,
+              px: 3,
+              bgcolor: "primary.main",
+              "&:hover": {
+                bgcolor: "primary.dark",
+              },
+            }}
+          >
+            All Boards
+          </Button>
+        </Box>
+
+        {/* Description with scroll */}
+        <Paper
+          sx={{
+            p: 2,
+            mb: 2,
+            maxHeight: "200px",
+            overflowY: "auto",
+            bgcolor: alpha(theme.palette.background.default, 0.5),
+            borderRadius: 2,
+            border: `1px solid ${alpha(theme.palette.divider, 0.2)}`,
+          }}
+        >
+          <Typography
+            variant="body1"
+            sx={{
+              whiteSpace: "pre-line",
+              lineHeight: 1.6,
+              color: "text.primary",
+            }}
+          >
+            {board.description || "Manage project tasks efficiently"}
+          </Typography>
+        </Paper>
+
+        {/* Progress Section */}
+        <Box sx={{ mb: 2 }}>
           <Box
             sx={{
-              width: `${calculateCompletionPercentage()}%`,
-              height: "100%",
-              bgcolor: "success.main",
-              borderRadius: 5,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              mb: 1,
             }}
-          />
+          >
+            <Typography
+              variant="h6"
+              sx={{ fontWeight: 600, color: "text.primary" }}
+            >
+              Project Progress
+            </Typography>
+            <Chip
+              label={`${calculateCompletionPercentage()}% - ${getBoardStatus()}`}
+              sx={{
+                bgcolor: theme.palette.success.main,
+                color: theme.palette.mode === "dark" ? "#000" : "#fff",
+                fontWeight: "bold",
+              }}
+            />
+          </Box>
+          <Box
+            sx={{
+              height: 12,
+              bgcolor: alpha(theme.palette.action.disabled, 0.2),
+              borderRadius: 6,
+              overflow: "hidden",
+              border: `1px solid ${alpha(theme.palette.divider, 0.3)}`,
+            }}
+          >
+            <Box
+              sx={{
+                width: `${calculateCompletionPercentage()}%`,
+                height: "100%",
+                bgcolor: theme.palette.success.main,
+                borderRadius: 6,
+                transition: "width 0.3s ease",
+              }}
+            />
+          </Box>
         </Box>
-        <Typography variant="body2" color="text.secondary">
-          {calculateCompletionPercentage()}% - {getBoardStatus()}
-        </Typography>
-      </Box>
+
+        {/* Document Management */}
+        <DocumentManagement
+          documents={documents}
+          onUpload={handleDocumentUpload}
+          isUploading={isUploading}
+          boardId={boardId} // Add this prop
+        />
+      </Paper>
 
       {/* Task Columns */}
       <Box
         sx={{
           flexGrow: 1,
           overflowX: "auto",
-          p: 3,
+          p: 2,
           display: "flex",
-          gap: 3,
+          gap: 2,
+          alignItems: "flex-start",
         }}
       >
         {renderColumn("todo", "To Do")}
@@ -998,17 +1148,26 @@ const Task = () => {
         {renderColumn("done", "Completed")}
       </Box>
 
-      {/* Team Members Button */}
+      {/* Team Members Floating Button */}
       <Button
         variant="contained"
-        color="secondary"
         startIcon={<PeopleIcon />}
         sx={{
           position: "fixed",
           bottom: 24,
           right: 24,
-          boxShadow: 3,
-          borderRadius: 2,
+          borderRadius: 3,
+          textTransform: "none",
+          fontWeight: 600,
+          px: 3,
+          py: 1.5,
+          bgcolor: theme.palette.secondary.main,
+          boxShadow: 6,
+          "&:hover": {
+            bgcolor: theme.palette.secondary.dark,
+            transform: "translateY(-2px)",
+            boxShadow: 8,
+          },
         }}
         onClick={(e) => setAnchorEl(e.currentTarget)}
       >
@@ -1019,22 +1178,54 @@ const Task = () => {
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
         onClose={() => setAnchorEl(null)}
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            mt: 1,
+            minWidth: 200,
+            bgcolor: "background.paper",
+            border: `1px solid ${alpha(theme.palette.divider, 0.12)}`,
+          },
+        }}
       >
         {board.members?.map((member) => (
-          <MenuItem key={member.id} dense>
-            {member.name} ({member.email})
+          <MenuItem key={member.id} sx={{ py: 1 }}>
+            <Box>
+              <Typography
+                variant="body2"
+                sx={{ fontWeight: 500, color: "text.primary" }}
+              >
+                {member.name}
+              </Typography>
+              <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                {member.email}
+              </Typography>
+            </Box>
           </MenuItem>
         ))}
       </Menu>
 
-      {/* Add Task Dialog */}
+      {/* Dialogs */}
       <Dialog
         open={isAddTaskDialogOpen}
         onClose={() => setIsAddTaskDialogOpen(false)}
         fullWidth
         maxWidth="sm"
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            bgcolor: "background.paper",
+          },
+        }}
       >
-        <DialogTitle>Add New Task</DialogTitle>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography
+            variant="h5"
+            sx={{ fontWeight: 600, color: "text.primary" }}
+          >
+            Add New Task
+          </Typography>
+        </DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -1043,32 +1234,54 @@ const Task = () => {
             label="Task Title"
             value={newTaskTitle}
             onChange={(e) => setNewTaskTitle(e.target.value)}
+            sx={{
+              mt: 2,
+              "& .MuiInputLabel-root": { color: "text.secondary" },
+              "& .MuiOutlinedInput-root": { color: "text.primary" },
+            }}
           />
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ p: 3 }}>
           <Button
             onClick={() => setIsAddTaskDialogOpen(false)}
-            sx={{ color: "error.main" }}
+            sx={{ color: "error.main", textTransform: "none" }}
           >
             Cancel
           </Button>
           <Button
             onClick={handleAddTaskSubmit}
-            sx={{ color: "primary.main", fontWeight: 600 }}
+            variant="contained"
+            sx={{
+              textTransform: "none",
+              fontWeight: 600,
+              borderRadius: 2,
+            }}
           >
             Add Task
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Edit Task Dialog */}
       <Dialog
         open={isEditTaskDialogOpen}
         onClose={() => setIsEditTaskDialogOpen(false)}
         fullWidth
         maxWidth="sm"
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            bgcolor: "background.paper",
+          },
+        }}
       >
-        <DialogTitle>Edit Task</DialogTitle>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography
+            variant="h5"
+            sx={{ fontWeight: 600, color: "text.primary" }}
+          >
+            Edit Task
+          </Typography>
+        </DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -1077,18 +1290,28 @@ const Task = () => {
             label="Task Title"
             value={newTaskTitle}
             onChange={(e) => setNewTaskTitle(e.target.value)}
+            sx={{
+              mt: 2,
+              "& .MuiInputLabel-root": { color: "text.secondary" },
+              "& .MuiOutlinedInput-root": { color: "text.primary" },
+            }}
           />
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ p: 3 }}>
           <Button
             onClick={() => setIsEditTaskDialogOpen(false)}
-            sx={{ color: "error.main" }}
+            sx={{ color: "error.main", textTransform: "none" }}
           >
             Cancel
           </Button>
           <Button
             onClick={handleEditTaskSubmit}
-            sx={{ color: "primary.main", fontWeight: 600 }}
+            variant="contained"
+            sx={{
+              textTransform: "none",
+              fontWeight: 600,
+              borderRadius: 2,
+            }}
           >
             Save Changes
           </Button>
@@ -1099,4 +1322,3 @@ const Task = () => {
 };
 
 export default Task;
-
