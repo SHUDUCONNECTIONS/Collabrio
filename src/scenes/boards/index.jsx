@@ -233,8 +233,8 @@ const Boards = () => {
   // Calculate pagination
   // const indexOfLastBoard = page * boardsPerPage;
   // const indexOfFirstBoard = indexOfLastBoard - boardsPerPage;
-  const currentBoards = filteredBoards.slice; // display board
-    //(
+  const currentBoards = filteredBoards; // display board
+    //slice(
   //  indexOfFirstBoard,
    // indexOfLastBoard
   );
