@@ -230,13 +230,12 @@ const Boards = () => {
     }
   }, [currentTab, boards]);
 
-  // Calculate pagination
-  // const indexOfLastBoard = page * boardsPerPage;
-  // const indexOfFirstBoard = indexOfLastBoard - boardsPerPage;
-  const currentBoards = filteredBoards; // display board
-    //slice(
-  //  indexOfFirstBoard,
-   // indexOfLastBoard
+  //Calculate pagination
+  const indexOfLastBoard = page * boardsPerPage;
+  const indexOfFirstBoard = indexOfLastBoard - boardsPerPage;
+  const currentBoards = filteredBoards.slice(
+   indexOfFirstBoard,
+    indexOfLastBoard
   );
   const pageCount = Math.ceil(filteredBoards.length / boardsPerPage);
 
