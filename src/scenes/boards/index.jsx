@@ -77,7 +77,7 @@ const Boards = () => {
   // Pagination and Tab state
   const [currentTab, setCurrentTab] = useState(0);
   const [page, setPage] = useState(1);
-  const [boardsPerPage] = useState(6);
+  const [boardsPerPage] = useState(50);// boards per page
 
   const theme = useTheme();
 
