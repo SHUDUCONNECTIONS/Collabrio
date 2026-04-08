@@ -231,11 +231,12 @@ const Boards = () => {
   }, [currentTab, boards]);
 
   // Calculate pagination
-  const indexOfLastBoard = page * boardsPerPage;
-  const indexOfFirstBoard = indexOfLastBoard - boardsPerPage;
-  const currentBoards = filteredBoards.slice(
-    indexOfFirstBoard,
-    indexOfLastBoard
+  // const indexOfLastBoard = page * boardsPerPage;
+  // const indexOfFirstBoard = indexOfLastBoard - boardsPerPage;
+  const currentBoards = filteredBoards.slice; // display board
+    //(
+  //  indexOfFirstBoard,
+   // indexOfLastBoard
   );
   const pageCount = Math.ceil(filteredBoards.length / boardsPerPage);
 
