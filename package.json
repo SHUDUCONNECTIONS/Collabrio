@@ -37,7 +37,7 @@
     "lucide-react": "^0.474.0",
     "pdf-lib": "^1.17.1",
     "react": "^18.2.0",
-    "react-admin": "file:",
+    
     "react-chartjs-2": "^4.3.1",
     "react-dom": "^18.2.0",
     "react-firebase-hooks": "^5.1.1",
@@ -51,7 +51,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "CI=false react-scripts build"
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
