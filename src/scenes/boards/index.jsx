@@ -14,7 +14,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   Alert,
   FormControl,
   InputLabel,
@@ -42,12 +41,10 @@ import {
   updateDoc,
   where,
   getDoc,
-  Timestamp,
 } from "firebase/firestore";
 import { db, auth } from "../../utils/firebase";
 import { useNavigate } from "react-router-dom";
 import { useAuthState } from "react-firebase-hooks/auth";
-import { useTheme } from "@mui/material/styles";
 
 const backgroundImages = [
   "/assets/bg1.jpg",
@@ -67,24 +64,13 @@ const Boards = () => {
   const [editMembersOpen, setEditMembersOpen] = useState(false);
   const [users, setUsers] = useState([]);
 
-  const [editDueDateOpen, setEditDueDateOpen] = useState(false);
-  const [selectedDueDate, setSelectedDueDate] = useState("");
-  const [boardToEdit, setBoardToEdit] = useState(null);
-
   const [currentTab, setCurrentTab] = useState(0);
 
   const navigate = useNavigate();
   const [user, loadingAuth, errorAuth] = useAuthState(auth);
-  const theme = useTheme();
-
-  const tabColors = {
-    todo: { light: "#3f51b5", dark: "#5c6bc0", text: "#fff" },
-    inprogress: { light: "#ff9800", dark: "#ffb74d", text: "#000" },
-    completed: { light: "#4caf50", dark: "#81c784", text: "#fff" },
-  };
 
   const normalizeStatus = (status) =>
-    (status || "todo").toLowerCase().replace(" ", "");
+    (status || "todo").toLowerCase().replace(/\s/g, "");
 
   const formatDeadline = (deadline) => {
     if (!deadline) return "No deadline";
@@ -99,9 +85,7 @@ const Boards = () => {
   useEffect(() => {
     const fetchUsers = async () => {
       const snap = await getDocs(collection(db, "users"));
-      setUsers(
-        snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-      );
+      setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     };
     fetchUsers();
   }, []);
@@ -156,7 +140,7 @@ const Boards = () => {
     fetchBoards();
   }, [user]);
 
-  // Filter boards
+  // Filter boards by tab
   useEffect(() => {
     const map = ["todo", "inprogress", "completed"];
     setFilteredBoards(
@@ -199,6 +183,7 @@ const Boards = () => {
     <Box m="20px">
       {error && <Alert severity="error">{error}</Alert>}
 
+      {/* Header */}
       <Box display="flex" justifyContent="space-between">
         <Header title="BOARDS" subtitle="Manage Your Boards" />
         <Button
@@ -217,9 +202,32 @@ const Boards = () => {
         <Tab label="Completed" />
       </Tabs>
 
-      {/* Boards */}
+      {/* Boards / Empty State */}
       {filteredBoards.length === 0 ? (
-        <Typography mt={4}>No boards found</Typography>
+        <Box
+          display="flex"
+          flexDirection="column"
+          alignItems="center"
+          justifyContent="center"
+          height="50vh"
+        >
+          <Typography variant="h6" color="textSecondary" gutterBottom>
+            No boards found in this category
+          </Typography>
+
+          <Typography color="textSecondary" mb={2}>
+            Create a new board or switch tabs to see other boards
+          </Typography>
+
+          <Button
+            onClick={() => navigate("/newBoard")}
+            color="secondary"
+            variant="contained"
+            startIcon={<AddIcon />}
+          >
+            Create New Board
+          </Button>
+        </Box>
       ) : (
         <Grid container spacing={3} mt={2}>
           {filteredBoards.map((board) => (
@@ -228,8 +236,9 @@ const Boards = () => {
                 onClick={() => navigate(`/boards/${board.id}`)}
                 sx={{
                   cursor: "pointer",
-                  backgroundImage: `url(${board.backgroundImage})`,
+                  backgroundImage: `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url(${board.backgroundImage})`,
                   backgroundSize: "cover",
+                  backgroundPosition: "center",
                   color: "#fff",
                 }}
               >
@@ -293,7 +302,7 @@ const Boards = () => {
 
       {/* Delete Dialog */}
       <Dialog open={deleteConfirmOpen}>
-        <DialogTitle>Delete?</DialogTitle>
+        <DialogTitle>Delete Board?</DialogTitle>
         <DialogActions>
           <Button onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
           <Button color="error" onClick={handleDelete}>
