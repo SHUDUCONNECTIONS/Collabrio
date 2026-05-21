@@ -287,7 +287,7 @@ const [user, setUser] = useState({ firstName: "", surname: "" });
         sx={{ gridAutoRows: "minmax(140px, auto)" }}
       >
         {/* User Boards Distribution */}
-        <Box gridColumn="span 12" gridRow="span 3" backgroundColor={colors.primary[400]}>
+        <Box sx={{ gridColumn: { xs: "span 12", md: "span 12" } }} gridRow="span 3" backgroundColor={colors.primary[400]}>
           <Box mt="25px" p="0 30px" display="flex" justifyContent="space-between">
             <Typography variant="h5" fontWeight="600" color={colors.grey[100]}>
               User Boards Distribution

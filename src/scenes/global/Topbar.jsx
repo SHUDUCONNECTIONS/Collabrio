@@ -30,7 +30,9 @@ import {
   FiberManualRecord as DotIcon,
   AccessTime as ReminderIcon,
   Dashboard as BoardReminderIcon,
+  Menu as MenuIcon,
 } from "@mui/icons-material";
+import { useMediaQuery } from "@mui/material";
 import { ColorModeContext, tokens } from "../../theme";
 import { useTheme } from "@mui/material/styles";
 import { useNavigate } from "react-router-dom";
@@ -53,11 +55,12 @@ import { onAuthStateChanged } from "firebase/auth";
 import { alpha } from '@mui/material/styles';
 
 
-const Topbar = ({ onLogout }) => {
+const Topbar = ({ onLogout, onMenuToggle }) => {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
   const colorMode = useContext(ColorModeContext);
   const navigate = useNavigate();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [notificationAnchorEl, setNotificationAnchorEl] = useState(null);
@@ -366,13 +369,20 @@ const Topbar = ({ onLogout }) => {
   };
 
   return (
-    <Box display="flex" justifyContent="space-between" p={2}>
+    <Box display="flex" justifyContent="space-between" alignItems="center" p={2} gap={1}>
+      {/* HAMBURGER — mobile only */}
+      {isMobile && (
+        <IconButton onClick={onMenuToggle} sx={{ flexShrink: 0 }}>
+          <MenuIcon />
+        </IconButton>
+      )}
+
       {/* SEARCH BAR */}
       <Box
         display="flex"
         backgroundColor={colors.primary[400]}
         borderRadius="3px"
-        width="40%"
+        sx={{ flex: 1, maxWidth: { xs: "100%", md: "40%" } }}
       >
         <InputBase
           sx={{ ml: 2, flex: 1 }}
@@ -433,7 +443,7 @@ const Topbar = ({ onLogout }) => {
             horizontal: "right",
           }}
         >
-          <Box p={2} width={350} maxHeight={400} sx={{ overflowY: "auto" }}>
+          <Box p={2} sx={{ width: { xs: "90vw", sm: 350 }, maxHeight: 400, overflowY: "auto" }}>
             <Box display="flex" justifyContent="space-between" mb={2}>
               <Typography variant="h6" fontWeight="bold">
                 Notifications

@@ -19,6 +19,14 @@ body,
   flex: 1;
   overflow-y: auto;
   height: 100vh;
+  min-width: 0;
+}
+
+/* Mobile tweaks */
+@media (max-width: 899px) {
+  .app {
+    flex-direction: column;
+  }
 }
 
 /* ── Entrance animations ── */

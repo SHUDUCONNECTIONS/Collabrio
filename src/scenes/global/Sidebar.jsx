@@ -20,16 +20,14 @@ import ForumOutlinedIcon from "@mui/icons-material/ForumOutlined";
 import { Badge } from "@mui/material";
 import { collection, onSnapshot, query, where, orderBy, limit } from "firebase/firestore";
 
-const Item = ({ title, to, icon, selected, setSelected }) => {
+const Item = ({ title, to, icon, selected, setSelected, onNavigate }) => {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
   return (
     <MenuItem
       active={selected === title}
-      style={{
-        color: colors.grey[100],
-      }}
-      onClick={() => setSelected(title)}
+      style={{ color: colors.grey[100] }}
+      onClick={() => { setSelected(title); onNavigate?.(); }}
       icon={icon}
     >
       <Typography>{title}</Typography>
@@ -47,7 +45,7 @@ const handleDownloadForm = () => {
   document.body.removeChild(link);
 };
 
-const Sidebar = () => {
+const Sidebar = ({ onNavigate }) => {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -137,6 +135,7 @@ const Sidebar = () => {
     localStorage.setItem("chatLastVisit", new Date().toISOString());
     setUnreadChat(0);
     setSelected("Chat");
+    onNavigate?.();
   };
 
   if (isLoading) {
@@ -233,6 +232,7 @@ const Sidebar = () => {
               icon={<HomeOutlinedIcon />}
               selected={selected}
               setSelected={setSelected}
+              onNavigate={onNavigate}
             />
 
             <Typography
@@ -249,6 +249,7 @@ const Sidebar = () => {
               icon={<ReceiptOutlinedIcon />}
               selected={selected}
               setSelected={setSelected}
+              onNavigate={onNavigate}
             />
 
             <Item
@@ -257,6 +258,7 @@ const Sidebar = () => {
               icon={<PersonOutlinedIcon />}
               selected={selected}
               setSelected={setSelected}
+              onNavigate={onNavigate}
             />
 
             {/* Conditionally render the "Colleagues" menu item for the CEO */}
@@ -276,6 +278,7 @@ const Sidebar = () => {
               icon={<AddCircleOutlineIcon />}
               selected={selected}
               setSelected={setSelected}
+              onNavigate={onNavigate}
             />
 
             <MenuItem
@@ -305,6 +308,7 @@ const Sidebar = () => {
               icon={<ReceiptOutlinedIcon />}
               selected={selected}
               setSelected={setSelected}
+              onNavigate={onNavigate}
             />
 
             <Item
@@ -313,6 +317,7 @@ const Sidebar = () => {
               icon={<CalendarTodayOutlinedIcon />}
               selected={selected}
               setSelected={setSelected}
+              onNavigate={onNavigate}
             />
 
             <Item
@@ -321,6 +326,7 @@ const Sidebar = () => {
               icon={<PieChartOutlineOutlinedIcon />}
               selected={selected}
               setSelected={setSelected}
+              onNavigate={onNavigate}
             />
 
             <Item
@@ -329,6 +335,7 @@ const Sidebar = () => {
               icon={<SportsEsportsOutlinedIcon />}
               selected={selected}
               setSelected={setSelected}
+              onNavigate={onNavigate}
             />
 
             <MenuItem
@@ -345,6 +352,7 @@ const Sidebar = () => {
               icon={<LogoutOutlinedIcon />}
               selected={selected}
               setSelected={setSelected}
+              onNavigate={onNavigate}
             /> */}
 
             <Typography

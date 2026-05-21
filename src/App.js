@@ -18,7 +18,7 @@ import Pie from "./scenes/pie";
 import FAQ from "./scenes/faq";
 import LoginForm from "./scenes/Login";
 import Geography from "./scenes/geography";
-import { CssBaseline, ThemeProvider } from "@mui/material";
+import { CssBaseline, ThemeProvider, Drawer, useMediaQuery } from "@mui/material";
 import { ColorModeContext, useMode } from "./theme";
 import Calendar from "./scenes/calendar/calendar";
 import SignUp from "./scenes/sign-up";
@@ -35,8 +35,10 @@ import WordScrambleGame from "./scenes/game";
 function App() {
   const [theme, colorMode] = useMode();
   const [isSidebar, setIsSidebar] = useState(true);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const navigate = useNavigate();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   usePresence();
   useDueDateReminders();
 
@@ -76,10 +78,27 @@ function App() {
         <LocalizationProvider dateAdapter={AdapterDateFns}>
           <CssBaseline />
           <div className="app">
-            {isAuthenticated && <Sidebar isSidebar={isSidebar} />}
+            {isAuthenticated && (
+              isMobile ? (
+                <Drawer
+                  open={mobileOpen}
+                  onClose={() => setMobileOpen(false)}
+                  ModalProps={{ keepMounted: true }}
+                  PaperProps={{ sx: { bgcolor: "transparent", boxShadow: "none" } }}
+                >
+                  <Sidebar isSidebar={isSidebar} onNavigate={() => setMobileOpen(false)} />
+                </Drawer>
+              ) : (
+                <Sidebar isSidebar={isSidebar} />
+              )
+            )}
             <main className={`content ${!isAuthenticated ? "w-full" : ""}`}>
               {isAuthenticated && (
-                <Topbar setIsSidebar={setIsSidebar} onLogout={handleLogout} />
+                <Topbar
+                  setIsSidebar={setIsSidebar}
+                  onLogout={handleLogout}
+                  onMenuToggle={() => setMobileOpen((o) => !o)}
+                />
               )}
               <Routes>
                 {/* Public routes */}
