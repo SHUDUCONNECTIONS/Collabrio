@@ -1,24 +1,18 @@
 import { useState, useEffect } from 'react';
 import { Box, CircularProgress, Typography, useTheme, Card } from '@mui/material';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, RadialBarChart, RadialBar,
-         XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
+import {
+  PieChart, Pie, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, Cell,
+} from 'recharts';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../utils/firebase';
-import { tokens } from "../theme";
-
+import { tokens } from '../theme';
 
 const COLORS = [
-  '#FF6B6B', // Coral Red
-  '#4ECDC4', // Turquoise
-  '#45B7D1', // Sky Blue
-  '#96CEB4', // Mint Green
-  '#FFEEAD', // Soft Yellow
-  '#D4A5A5', // Dusty Rose
-  '#9B59B6', // Purple
-  '#3498DB', // Blue
-  '#FF9F43'  // Orange
+  '#1a8fff', '#4ECDC4', '#FF6B6B', '#96CEB4',
+  '#FFEEAD', '#9B59B6', '#FF9F43', '#45B7D1', '#D4A5A5',
 ];
-
 
 const MultiChartDashboard = () => {
   const theme = useTheme();
@@ -28,127 +22,117 @@ const MultiChartDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-
   useEffect(() => {
     const fetchData = async () => {
       try {
         const currentUser = auth.currentUser;
         if (!currentUser) {
-          setError("You must be logged in to view the dashboard.");
+          setError('You must be logged in to view this page.');
           setLoading(false);
           return;
         }
 
-
         const [usersSnapshot, boardsSnapshot] = await Promise.all([
           getDocs(collection(db, 'users')),
-          getDocs(query(collection(db, "boards"), where("memberIds", "array-contains", currentUser.uid)))
+          getDocs(query(collection(db, 'boards'), where('memberIds', 'array-contains', currentUser.uid))),
         ]);
-
 
         const userDetails = {};
         usersSnapshot.docs.forEach(doc => {
-          userDetails[doc.id] = doc.data().firstName || `User-${doc.id.slice(0,4)}`;
+          userDetails[doc.id] = doc.data().firstName || `User-${doc.id.slice(0, 4)}`;
         });
-
 
         const userBoardCounts = {};
         const statusCounts = {};
 
-
         boardsSnapshot.docs.forEach(doc => {
-          const boardData = doc.data();
-          const normalizedStatus = boardData.status?.toLowerCase().trim();
-         
-          boardData.memberIds?.forEach(memberId => {
+          const board = doc.data();
+          const normalizedStatus = board.status?.toLowerCase().trim();
+
+          board.memberIds?.forEach(memberId => {
             userBoardCounts[memberId] = (userBoardCounts[memberId] || 0) + 1;
-           
-            statusCounts[memberId] = statusCounts[memberId] || {
-              completed: 0,
-              inProgress: 0,
-              toDo: 0
-            };
-           
+
+            statusCounts[memberId] = statusCounts[memberId] || { completed: 0, inProgress: 0, toDo: 0 };
             if (normalizedStatus === 'completed') statusCounts[memberId].completed++;
-            if (normalizedStatus === 'in progress') statusCounts[memberId].inProgress++;
-            if (normalizedStatus === 'to do') statusCounts[memberId].toDo++;
+            else if (normalizedStatus === 'in progress') statusCounts[memberId].inProgress++;
+            else if (normalizedStatus === 'to do') statusCounts[memberId].toDo++;
           });
         });
 
-
         const chartData = Object.entries(userBoardCounts)
-          .filter(([userId]) => userDetails[userId])
-          .map(([userId, boardCount], index) => ({
-            name: userDetails[userId],
-            value: boardCount,
-            boards: boardCount,
-            fill: COLORS[index % COLORS.length]
+          .filter(([id]) => userDetails[id])
+          .map(([id, count], i) => ({
+            name: userDetails[id],
+            value: count,
+            fill: COLORS[i % COLORS.length],
           }));
-
 
         const statusChartData = Object.entries(statusCounts)
-          .filter(([userId]) => userDetails[userId])
-          .map(([userId, counts]) => ({
-            name: userDetails[userId],
-            ...counts
-          }));
-
+          .filter(([id]) => userDetails[id])
+          .map(([id, counts]) => ({ name: userDetails[id], ...counts }));
 
         setData(chartData);
         setStatusData(statusChartData);
         setLoading(false);
       } catch (err) {
         console.error('Error fetching data:', err);
-        setError('Failed to load chart data');
+        setError('Failed to load chart data.');
         setLoading(false);
       }
     };
 
-
     if (auth.currentUser) {
       fetchData();
     } else {
-      const unsubscribe = auth.onAuthStateChanged((user) => {
-        if (user) fetchData();
-      });
-      return () => unsubscribe();
+      const unsub = auth.onAuthStateChanged(user => { if (user) fetchData(); });
+      return () => unsub();
     }
   }, []);
 
-
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <Box
-          sx={{
-            bgcolor: 'rgba(255, 255, 255, 0.95)',
-            p: 2,
-            borderRadius: 1,
-            boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-            border: '1px solid #ddd'
-          }}
-        >
-          <Typography sx={{ color: '#333', fontWeight: 'bold' }}>
-            {payload[0].payload.name}
-          </Typography>
-          <Typography sx={{ color: payload[0].color }}>
-            Boards: {payload[0].value}
-          </Typography>
-        </Box>
-      );
-    }
-    return null;
+  const PieTooltip = ({ active, payload }) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <Box sx={{ bgcolor: colors.primary[300], p: 1.5, borderRadius: 2, border: `1px solid ${colors.primary[200]}` }}>
+        <Typography sx={{ color: colors.grey[100], fontWeight: 700 }}>{payload[0].name}</Typography>
+        <Typography sx={{ color: payload[0].payload.fill }}>{payload[0].value} board{payload[0].value !== 1 ? 's' : ''}</Typography>
+      </Box>
+    );
   };
 
+  const BarTooltip = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <Box sx={{ bgcolor: colors.primary[300], p: 1.5, borderRadius: 2, border: `1px solid ${colors.primary[200]}` }}>
+        <Typography sx={{ color: colors.grey[100], fontWeight: 700, mb: 0.5 }}>{label}</Typography>
+        {payload.map(p => (
+          <Typography key={p.dataKey} sx={{ color: p.fill }}>
+            {p.name}: {p.value}
+          </Typography>
+        ))}
+      </Box>
+    );
+  };
+
+  const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+    if (percent < 0.05) return null;
+    const RADIAN = Math.PI / 180;
+    const r = innerRadius + (outerRadius - innerRadius) * 0.55;
+    const x = cx + r * Math.cos(-midAngle * RADIAN);
+    const y = cy + r * Math.sin(-midAngle * RADIAN);
+    return (
+      <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central" fontSize={13} fontWeight={700}>
+        {`${(percent * 100).toFixed(0)}%`}
+      </text>
+    );
+  };
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="500px">
-        <CircularProgress />
+      <Box display="flex" justifyContent="center" alignItems="center" height="400px">
+        <CircularProgress sx={{ color: colors.blueAccent[400] }} />
       </Box>
     );
   }
-
 
   if (error) {
     return (
@@ -158,56 +142,24 @@ const MultiChartDashboard = () => {
     );
   }
 
-
   return (
-    <Box p={4} sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {/* Board Distribution Bar Chart */}
-      <Card sx={{ p: 2, bgcolor: colors.primary[400], height: '600px' }}>
-        <Typography variant="h6" sx={{ color: colors.grey[100], mb: 2 }}>
-          Board Distribution - Bar Chart
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+        gap: 3,
+        p: 0,
+      }}
+    >
+      {/* Donut — Board Distribution */}
+      <Card sx={{ p: 3, bgcolor: colors.primary[400], borderRadius: 3, boxShadow: 4 }}>
+        <Typography variant="h5" fontWeight={700} color={colors.grey[100]} mb={0.5}>
+          Board Distribution
         </Typography>
-        <ResponsiveContainer width="100%" height="90%">
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke={colors.grey[200]} />
-            <XAxis dataKey="name" stroke={colors.grey[200]} />
-            <YAxis stroke={colors.grey[200]} />
-            <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="boards" radius={[8, 8, 0, 0]}>
-              {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </Card>
-
-
-      {/* Task Status Stacked Bar Chart */}
-      <Card sx={{ p: 2, bgcolor: colors.primary[400], height: '600px' }}>
-        <Typography variant="h6" sx={{ color: colors.grey[100], mb: 2 }}>
-          Task Status Distribution - Stacked Bar Chart
+        <Typography variant="body2" color={colors.grey[400]} mb={2}>
+          Boards per team member
         </Typography>
-        <ResponsiveContainer width="100%" height="90%">
-          <BarChart data={statusData}>
-            <CartesianGrid strokeDasharray="3 3" stroke={colors.grey[200]} />
-            <XAxis dataKey="name" stroke={colors.grey[200]} />
-            <YAxis stroke={colors.grey[200]} />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="completed" stackId="a" fill="#4CAF50" />
-            <Bar dataKey="inProgress" stackId="a" fill="#FFC107" />
-            <Bar dataKey="toDo" stackId="a" fill="#F44336" />
-          </BarChart>
-        </ResponsiveContainer>
-      </Card>
-
-
-      {/* Board Distribution Pie Chart */}
-      <Card sx={{ p: 2, bgcolor: colors.primary[400], height: '600px' }}>
-        <Typography variant="h6" sx={{ color: colors.grey[100], mb: 2 }}>
-          Board Distribution - Pie Chart
-        </Typography>
-        <ResponsiveContainer width="100%" height="90%">
+        <ResponsiveContainer width="100%" height={340}>
           <PieChart>
             <Pie
               data={data}
@@ -215,72 +167,56 @@ const MultiChartDashboard = () => {
               nameKey="name"
               cx="50%"
               cy="50%"
-              outerRadius={200}
-              label={(entry) => entry.name}
+              innerRadius="52%"
+              outerRadius="78%"
+              paddingAngle={3}
+              labelLine={false}
+              label={renderCustomLabel}
             >
-              {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              {data.map((entry, i) => (
+                <Cell key={i} fill={COLORS[i % COLORS.length]} />
               ))}
             </Pie>
-            <Tooltip />
-            <Legend />
+            <Tooltip content={<PieTooltip />} />
+            <Legend
+              iconType="circle"
+              formatter={(value) => (
+                <span style={{ color: colors.grey[100], fontSize: 13 }}>{value}</span>
+              )}
+            />
           </PieChart>
         </ResponsiveContainer>
       </Card>
 
-
-      {/* Board Distribution Radial Chart */}
-      <Card sx={{ p: 2, bgcolor: colors.primary[400], height: '600px' }}>
-        <Typography variant="h6" sx={{ color: colors.grey[100], mb: 2 }}>
-          Board Distribution - Radial Chart
+      {/* Stacked Bar — Task Status */}
+      <Card sx={{ p: 3, bgcolor: colors.primary[400], borderRadius: 3, boxShadow: 4 }}>
+        <Typography variant="h5" fontWeight={700} color={colors.grey[100]} mb={0.5}>
+          Task Status
         </Typography>
-        <ResponsiveContainer width="100%" height="90%">
-          <RadialBarChart
-            cx="50%"
-            cy="50%"
-            innerRadius="10%"
-            outerRadius="80%"
-            barSize={20}
-            data={data}
-          >
-            <RadialBar
-              minAngle={15}
-              label={{ position: 'insideStart', fill: '#fff' }}
-              background
-              dataKey="value"
-            />
-            <Legend />
-            <Tooltip />
-          </RadialBarChart>
-        </ResponsiveContainer>
-      </Card>
-
-
-      {/* Board Distribution Line Chart */}
-      <Card sx={{ p: 2, bgcolor: colors.primary[400], height: '600px' }}>
-        <Typography variant="h6" sx={{ color: colors.grey[100], mb: 2 }}>
-          Board Distribution - Line Chart
+        <Typography variant="body2" color={colors.grey[400]} mb={2}>
+          Completed · In Progress · To Do per member
         </Typography>
-        <ResponsiveContainer width="100%" height="90%">
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke={colors.grey[200]} />
-            <XAxis dataKey="name" stroke={colors.grey[200]} />
-            <YAxis stroke={colors.grey[200]} />
-            <Tooltip content={<CustomTooltip />} />
-            <Line
-              type="monotone"
-              dataKey="boards"
-              stroke="#8884d8"
-              strokeWidth={2}
-              dot={{ fill: '#8884d8', r: 6 }}
+        <ResponsiveContainer width="100%" height={340}>
+          <BarChart data={statusData} barSize={28}>
+            <CartesianGrid strokeDasharray="3 3" stroke={colors.primary[300]} vertical={false} />
+            <XAxis dataKey="name" stroke={colors.grey[400]} tick={{ fill: colors.grey[300], fontSize: 12 }} />
+            <YAxis stroke={colors.grey[400]} tick={{ fill: colors.grey[300], fontSize: 12 }} allowDecimals={false} />
+            <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+            <Legend
+              formatter={(value) => (
+                <span style={{ color: colors.grey[100], fontSize: 13 }}>
+                  {value === 'completed' ? 'Completed' : value === 'inProgress' ? 'In Progress' : 'To Do'}
+                </span>
+              )}
             />
-          </LineChart>
+            <Bar dataKey="completed" stackId="a" fill="#4CAF50" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="inProgress" stackId="a" fill="#FFC107" />
+            <Bar dataKey="toDo" stackId="a" fill="#F44336" radius={[4, 4, 0, 0]} />
+          </BarChart>
         </ResponsiveContainer>
       </Card>
     </Box>
   );
 };
 
-
 export default MultiChartDashboard;
-

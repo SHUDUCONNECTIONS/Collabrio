@@ -1,9 +1,12 @@
-import { React, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import Topbar from "./scenes/global/Topbar";
 import Sidebar from "./scenes/global/Sidebar";
+import { auth } from "./utils/firebase";
+import { usePresence } from "./hooks/usePresence";
+import { useDueDateReminders } from "./hooks/useDueDateReminders";
 import Dashboard from "./scenes/dashboard";
 import Team from "./scenes/team";
 import Invoices from "./scenes/invoices";
@@ -23,15 +26,19 @@ import HistoryPage from "./components/History";
 import AddBoard from "./scenes/newBoard";
 import Task from "./scenes/task";
 import Boards from "./scenes/boards";
+import ChatRoom from "./scenes/chat";
 import EmployeeListPage from "./scenes/adminBoard";
 import BoardDetailsPage from "./scenes/boardDetails";
 import EmployeeBoardsPage from "./scenes/employeeBoards";
+import WordScrambleGame from "./scenes/game";
 
 function App() {
   const [theme, colorMode] = useMode();
   const [isSidebar, setIsSidebar] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const navigate = useNavigate();
+  usePresence();
+  useDueDateReminders();
 
   useEffect(() => {
     const authStatus = localStorage.getItem("isAuthenticated");
@@ -45,7 +52,12 @@ function App() {
     localStorage.setItem("isAuthenticated", "true");
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+    } catch (e) {
+      console.error("Sign out error:", e);
+    }
     setIsAuthenticated(false);
     localStorage.removeItem("isAuthenticated");
     navigate("/Login");
@@ -188,6 +200,14 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
+                <Route
+                  path="/chat"
+                  element={
+                    <ProtectedRoute>
+                      <ChatRoom />
+                    </ProtectedRoute>
+                  }
+                />
 
                 {/* Board-related routes */}
                 <Route
@@ -235,6 +255,15 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <EmployeeBoardsPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/game"
+                  element={
+                    <ProtectedRoute>
+                      <WordScrambleGame />
                     </ProtectedRoute>
                   }
                 />

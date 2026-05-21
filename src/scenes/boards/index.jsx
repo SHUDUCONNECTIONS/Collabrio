@@ -6,7 +6,6 @@ import {
   Card,
   CardContent,
   CardActions,
-  Grid,
   CircularProgress,
   Chip,
   IconButton,
@@ -23,6 +22,12 @@ import {
   ListItemText,
   Tabs,
   Tab,
+  LinearProgress,
+  useTheme,
+  alpha,
+  Tooltip,
+  TextField,
+  Grid,
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -43,16 +48,16 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { db, auth } from "../../utils/firebase";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthState } from "react-firebase-hooks/auth";
 
-const backgroundImages = [
-  "/assets/bg1.jpg",
-  "/assets/bg2.jpg",
-  "/assets/bg3.jpg",
-];
+const backgroundImages = Array.from({ length: 25 }, (_, i) => `/assets/bg${i + 1}.jpg`);
+
+const priorityColor = (p) =>
+  p === "Critical" ? "#ef5350" : p === "Important" ? "#ff9800" : "#4caf50";
 
 const Boards = () => {
+  const theme = useTheme();
   const [boards, setBoards] = useState([]);
   const [filteredBoards, setFilteredBoards] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -61,12 +66,17 @@ const Boards = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [selectedBoard, setSelectedBoard] = useState(null);
 
-  const [editMembersOpen, setEditMembersOpen] = useState(false);
+  const [editBoardOpen, setEditBoardOpen] = useState(false);
+  const [editBoardName, setEditBoardName] = useState("");
+  const [editBoardDescription, setEditBoardDescription] = useState("");
+  const [editBoardSaving, setEditBoardSaving] = useState(false);
   const [users, setUsers] = useState([]);
 
   const [currentTab, setCurrentTab] = useState(0);
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const searchQuery = searchParams.get("search") || "";
   const [user, loadingAuth, errorAuth] = useAuthState(auth);
 
   const normalizeStatus = (status) =>
@@ -140,13 +150,22 @@ const Boards = () => {
     fetchBoards();
   }, [user]);
 
-  // Filter boards by tab
+  // Filter boards by tab and search query
   useEffect(() => {
     const map = ["todo", "inprogress", "completed"];
+    const q = searchQuery.toLowerCase();
     setFilteredBoards(
-      boards.filter((b) => b.status === map[currentTab])
+      boards.filter((b) => {
+        const matchesTab = b.status === map[currentTab];
+        if (!q) return matchesTab;
+        return matchesTab && (
+          b.boardName?.toLowerCase().includes(q) ||
+          b.description?.toLowerCase().includes(q) ||
+          b.createdByName?.toLowerCase().includes(q)
+        );
+      })
     );
-  }, [boards, currentTab]);
+  }, [boards, currentTab, searchQuery]);
 
   if (loadingAuth || loading) return <CircularProgress />;
   if (errorAuth) return <Alert severity="error">{errorAuth.message}</Alert>;
@@ -158,25 +177,36 @@ const Boards = () => {
     setDeleteConfirmOpen(false);
   };
 
-  const updateMembers = async () => {
-    const ref = doc(db, "boards", selectedBoard.id);
+  const updateBoard = async () => {
+    if (!editBoardName.trim()) return;
+    setEditBoardSaving(true);
+    try {
+      const boardRef = doc(db, "boards", selectedBoard.id);
 
-    const uniqueMembers = selectedBoard.members.filter(
-      (m, i, arr) => arr.findIndex((x) => x.id === m.id) === i
-    );
+      const uniqueMembers = selectedBoard.members.filter(
+        (m, i, arr) => arr.findIndex((x) => x.id === m.id) === i
+      );
 
-    await updateDoc(ref, {
-      members: uniqueMembers,
-      memberIds: uniqueMembers.map((m) => m.id),
-    });
+      await updateDoc(boardRef, {
+        boardName: editBoardName.trim(),
+        description: editBoardDescription.trim(),
+        members: uniqueMembers,
+        memberIds: uniqueMembers.map((m) => m.id),
+      });
 
-    setBoards((prev) =>
-      prev.map((b) =>
-        b.id === selectedBoard.id ? { ...b, members: uniqueMembers } : b
-      )
-    );
-
-    setEditMembersOpen(false);
+      setBoards((prev) =>
+        prev.map((b) =>
+          b.id === selectedBoard.id
+            ? { ...b, boardName: editBoardName.trim(), description: editBoardDescription.trim(), members: uniqueMembers }
+            : b
+        )
+      );
+      setEditBoardOpen(false);
+    } catch (err) {
+      console.error("Error updating board:", err);
+    } finally {
+      setEditBoardSaving(false);
+    }
   };
 
   return (
@@ -194,6 +224,13 @@ const Boards = () => {
           Add Board
         </Button>
       </Box>
+
+      {/* Search banner */}
+      {searchQuery && (
+        <Alert severity="info" sx={{ mb: 1 }}>
+          Showing results for <strong>"{searchQuery}"</strong>
+        </Alert>
+      )}
 
       {/* Tabs */}
       <Tabs value={currentTab} onChange={(e, v) => setCurrentTab(v)}>
@@ -236,62 +273,90 @@ const Boards = () => {
                 onClick={() => navigate(`/boards/${board.id}`)}
                 sx={{
                   cursor: "pointer",
-                  backgroundImage: `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url(${board.backgroundImage})`,
+                  position: "relative",
+                  borderRadius: 3,
+                  overflow: "hidden",
+                  boxShadow: theme.palette.mode === "dark" ? 4 : 2,
+                  transition: "transform 0.2s, box-shadow 0.2s",
+                  "&:hover": { transform: "translateY(-4px)", boxShadow: 8 },
+                  backgroundImage: `linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url(${board.backgroundImage})`,
                   backgroundSize: "cover",
                   backgroundPosition: "center",
                   color: "#fff",
                 }}
               >
-                <CardContent>
-                  <Typography variant="h6" align="center">
-                    {board.boardName}
-                  </Typography>
+                {/* Priority accent bar */}
+                <Box sx={{ height: 4, bgcolor: priorityColor(board.priority), width: "100%" }} />
 
-                  <Typography variant="caption">
-                    {board.description}
-                  </Typography>
-
-                  <Box display="flex" alignItems="center" mt={1}>
-                    <PeopleIcon />
-                    <Typography ml={1}>
-                      {board.members.length} members
+                <CardContent sx={{ pb: 1 }}>
+                  <Box display="flex" justifyContent="space-between" alignItems="flex-start">
+                    <Typography variant="h6" fontWeight={700} sx={{ lineHeight: 1.3, flex: 1, mr: 1 }}>
+                      {board.boardName}
                     </Typography>
+                    <Chip
+                      label={board.priority || "—"}
+                      size="small"
+                      sx={{ bgcolor: alpha(priorityColor(board.priority), 0.85), color: "#fff", fontSize: "0.65rem", height: 20, fontWeight: 700 }}
+                    />
                   </Box>
 
-                  <Typography mt={1}>
-                    Admin: {board.createdByName}
+                  <Typography variant="caption" sx={{ opacity: 0.75, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", mt: 0.5 }}>
+                    {board.description || "No description"}
                   </Typography>
 
-                  <Chip label={`Due: ${board.deadline}`} />
+                  {/* Progress */}
+                  {typeof board.completionPercentage === "number" && (
+                    <Box mt={1.5}>
+                      <Box display="flex" justifyContent="space-between" mb={0.5}>
+                        <Typography variant="caption" sx={{ opacity: 0.8 }}>Progress</Typography>
+                        <Typography variant="caption" fontWeight={700}>{board.completionPercentage}%</Typography>
+                      </Box>
+                      <LinearProgress
+                        variant="determinate"
+                        value={board.completionPercentage}
+                        sx={{ borderRadius: 4, height: 5, bgcolor: "rgba(255,255,255,0.2)", "& .MuiLinearProgress-bar": { bgcolor: "#4cceac" } }}
+                      />
+                    </Box>
+                  )}
+
+                  <Box display="flex" alignItems="center" justifyContent="space-between" mt={1.5}>
+                    <Box display="flex" alignItems="center" gap={0.5}>
+                      <PeopleIcon sx={{ fontSize: 14, opacity: 0.7 }} />
+                      <Typography variant="caption" sx={{ opacity: 0.8 }}>{board.members.length} members</Typography>
+                    </Box>
+                    <Typography variant="caption" sx={{ opacity: 0.7 }}>Due {board.deadline}</Typography>
+                  </Box>
                 </CardContent>
 
-                <CardActions>
-                  <Typography>
-                    Priority: {board.priority}
-                  </Typography>
-
+                <CardActions sx={{ pt: 0, px: 2, pb: 1.5, justifyContent: "space-between" }}>
+                  <Typography variant="caption" sx={{ opacity: 0.7 }}>by {board.createdByName}</Typography>
                   {board.createdBy === user.uid && (
-                    <>
-                      <IconButton
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedBoard(board);
-                          setEditMembersOpen(true);
-                        }}
-                      >
-                        <EditIcon />
-                      </IconButton>
-
-                      <IconButton
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedBoard(board.id);
-                          setDeleteConfirmOpen(true);
-                        }}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </>
+                    <Box>
+                      <Tooltip title="Edit board">
+                        <IconButton
+                          size="small"
+                          sx={{ color: "rgba(255,255,255,0.7)", "&:hover": { color: "#fff" } }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedBoard(board);
+                            setEditBoardName(board.boardName || "");
+                            setEditBoardDescription(board.description || "");
+                            setEditBoardOpen(true);
+                          }}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete board">
+                        <IconButton
+                          size="small"
+                          sx={{ color: "rgba(255,255,255,0.7)", "&:hover": { color: "#ef5350" } }}
+                          onClick={(e) => { e.stopPropagation(); setSelectedBoard(board.id); setDeleteConfirmOpen(true); }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   )}
                 </CardActions>
               </Card>
@@ -311,42 +376,64 @@ const Boards = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Edit Members Dialog */}
-      <Dialog open={editMembersOpen}>
-        <DialogTitle>Edit Members</DialogTitle>
-        <DialogContent>
+      {/* Edit Board Dialog */}
+      <Dialog open={editBoardOpen} onClose={() => setEditBoardOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Edit Board</DialogTitle>
+        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: "16px !important" }}>
+          <TextField
+            label="Board Name"
+            fullWidth
+            value={editBoardName}
+            onChange={(e) => setEditBoardName(e.target.value)}
+            required
+            error={!editBoardName.trim()}
+            helperText={!editBoardName.trim() ? "Board name is required" : ""}
+          />
+          <TextField
+            label="Description (optional)"
+            fullWidth
+            multiline
+            rows={3}
+            value={editBoardDescription}
+            onChange={(e) => setEditBoardDescription(e.target.value)}
+          />
           <FormControl fullWidth>
-            <InputLabel>Add Members</InputLabel>
+            <InputLabel>Members</InputLabel>
             <Select
               multiple
-              value={[]}
+              value={selectedBoard?.members?.map((m) => m.id) || []}
+              label="Members"
               onChange={(e) => {
-                const newUsers = users
+                const newMembers = users
                   .filter((u) => e.target.value.includes(u.id))
-                  .map((u) => ({
-                    id: u.id,
-                    name: `${u.firstName} ${u.surname}`,
-                  }));
-
-                setSelectedBoard((prev) => ({
-                  ...prev,
-                  members: [...prev.members, ...newUsers],
-                }));
+                  .map((u) => ({ id: u.id, name: `${u.firstName} ${u.surname}` }));
+                setSelectedBoard((prev) => ({ ...prev, members: newMembers }));
               }}
+              renderValue={(selected) =>
+                users
+                  .filter((u) => selected.includes(u.id))
+                  .map((u) => `${u.firstName} ${u.surname}`)
+                  .join(", ")
+              }
             >
               {users.map((u) => (
                 <MenuItem key={u.id} value={u.id}>
-                  <Checkbox />
-                  <ListItemText primary={u.firstName} />
+                  <Checkbox checked={selectedBoard?.members?.some((m) => m.id === u.id) || false} />
+                  <ListItemText primary={`${u.firstName} ${u.surname}`} secondary={u.email} />
                 </MenuItem>
               ))}
             </Select>
           </FormControl>
         </DialogContent>
-
         <DialogActions>
-          <Button onClick={() => setEditMembersOpen(false)}>Cancel</Button>
-          <Button onClick={updateMembers}>Save</Button>
+          <Button onClick={() => setEditBoardOpen(false)} disabled={editBoardSaving}>Cancel</Button>
+          <Button
+            onClick={updateBoard}
+            variant="contained"
+            disabled={editBoardSaving || !editBoardName.trim()}
+          >
+            {editBoardSaving ? "Saving…" : "Save Changes"}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

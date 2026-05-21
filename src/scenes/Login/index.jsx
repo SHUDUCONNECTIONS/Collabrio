@@ -109,17 +109,17 @@ const LoginForm = ({ onAuthentication }) => {
 
   const textFieldSx = {
     "& .MuiFilledInput-root": {
-      backgroundColor: "rgba(255, 255, 255, 0.05)",
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
       borderRadius: "8px",
       marginBottom: "20px",
       border: "1px solid rgba(255, 255, 255, 0.1)",
       "&:hover": {
-        backgroundColor: "rgba(255, 255, 255, 0.08)",
-        borderColor: "#4cceac",
+        backgroundColor: "rgba(255, 255, 255, 0.09)",
+        borderColor: "#1a8fff",
       },
       "&.Mui-focused": {
-        backgroundColor: "rgba(255, 255, 255, 0.08)",
-        borderColor: "#4cceac",
+        backgroundColor: "rgba(255, 255, 255, 0.09)",
+        borderColor: "#1a8fff",
       },
     },
     "& .MuiFilledInput-input": {
@@ -128,7 +128,7 @@ const LoginForm = ({ onAuthentication }) => {
       fontSize: "1rem",
     },
     "& .MuiInputLabel-root": {
-      color: "rgba(255, 255, 255, 0.7)",
+      color: "rgba(255, 255, 255, 0.65)",
     },
   };
 
@@ -144,7 +144,7 @@ const LoginForm = ({ onAuthentication }) => {
       alignItems="center"
       minHeight="100vh"
       sx={{
-        background: `linear-gradient(rgba(20, 27, 45, 0.8), rgba(20, 27, 45, 0.9)), url('assets/download.jpg')`,
+        background: `linear-gradient(135deg, rgba(28, 21, 69, 0.92) 0%, rgba(45, 38, 96, 0.95) 100%), url('assets/download.jpg')`,
         backgroundSize: "cover",
         backgroundPosition: "center",
         padding: "20px",
@@ -156,7 +156,7 @@ const LoginForm = ({ onAuthentication }) => {
         p="32px"
         borderRadius="12px"
         boxShadow="0px 4px 20px rgba(0, 0, 0, 0.3)"
-        bgcolor="#1f2940"
+        bgcolor="#2d2660"
       >
         <Box display="flex" justifyContent="center" mb={4}>
           <img
@@ -223,7 +223,7 @@ const LoginForm = ({ onAuthentication }) => {
                   variant="contained"
                   fullWidth
                   disabled={loading}
-                  sx={{ backgroundColor: "#4cceac", color: "white" }}
+                  sx={{ backgroundColor: "#1a8fff", color: "white", "&:hover": { backgroundColor: "#1572cc" } }}
                 >
                   {loading ? "Signing in..." : "Login"}
                 </Button>
@@ -232,7 +232,7 @@ const LoginForm = ({ onAuthentication }) => {
                   variant="outlined"
                   fullWidth
                   disabled={loading}
-                  sx={{ color: "white", borderColor: "#4cceac" }}
+                  sx={{ color: "white", borderColor: "#1a8fff" }}
                 >
                   Sign in with Google
                 </Button> */}
@@ -249,7 +249,7 @@ const LoginForm = ({ onAuthentication }) => {
                   onClick={() => navigate("/sign-up")}
                   variant="outlined"
                   fullWidth
-                  sx={{ color: "white", borderColor: "#4cceac" }}
+                  sx={{ color: "white", borderColor: "#1a8fff" }}
                 >
                   Sign Up
                 </Button>

@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from "react";
+import { useContext, useState, useEffect, useRef } from "react";
 import {
   Box,
   IconButton,
@@ -13,8 +13,9 @@ import {
   Popover,
   List,
   ListItem,
-  ListItemText,
   ListItemIcon,
+  Snackbar,
+  Alert,
 } from "@mui/material";
 import {
   DarkModeOutlined,
@@ -27,6 +28,8 @@ import {
   Event as EventIcon,
   PersonAdd as PersonAddIcon,
   FiberManualRecord as DotIcon,
+  AccessTime as ReminderIcon,
+  Dashboard as BoardReminderIcon,
 } from "@mui/icons-material";
 import { ColorModeContext, tokens } from "../../theme";
 import { useTheme } from "@mui/material/styles";
@@ -40,7 +43,6 @@ import {
   doc,
   getDoc,
   addDoc,
-  deleteDoc,
   orderBy,
   limit,
   writeBatch,
@@ -61,12 +63,14 @@ const Topbar = ({ onLogout }) => {
   const [notificationAnchorEl, setNotificationAnchorEl] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [unreadNotifications, setUnreadNotifications] = useState(new Set());
+  const [toast, setToast] = useState(null); // { message, severity }
+  const prevUnreadCount = useRef(0);
   const [user, setUser] = useState({
     firstName: "",
     surname: "",
     email: "",
+    photoURL: null,
   });
-  const [authError, setAuthError] = useState(null);
   const open = Boolean(anchorEl);
   const notificationOpen = Boolean(notificationAnchorEl);
   const MAX_NOTIFICATIONS = 5;
@@ -94,6 +98,7 @@ const Topbar = ({ onLogout }) => {
             firstName: userData.firstName,
             surname: userData.surname,
             email: userData.email,
+            photoURL: userData.photoURL || null,
           });
         }
       } catch (error) {
@@ -116,9 +121,15 @@ const Topbar = ({ onLogout }) => {
         }));
 
         setNotifications(notificationsData);
-        setUnreadNotifications(
-          new Set(notificationsData.filter((n) => !n.read).map((n) => n.id))
-        );
+        const unread = new Set(notificationsData.filter((n) => !n.read).map((n) => n.id));
+        setUnreadNotifications(unread);
+
+        // Show toast when a new unread notification arrives
+        if (unread.size > prevUnreadCount.current && prevUnreadCount.current >= 0) {
+          const newest = notificationsData.find((n) => !n.read);
+          if (newest) setToast({ message: newest.message, severity: "info" });
+        }
+        prevUnreadCount.current = unread.size;
       });
     });
 
@@ -130,45 +141,12 @@ const Topbar = ({ onLogout }) => {
     };
   }, [navigate]);
 
-  useEffect(() => {
-    let unsubscribeNotifications;
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        const q = query(
-          collection(db, "notifications"),
-          where("userId", "==", currentUser.uid),
-          orderBy("timestamp", "desc"),
-          limit(MAX_NOTIFICATIONS)
-        );
-
-        unsubscribeNotifications = onSnapshot(q, (snapshot) => {
-          const notificationsData = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-            createdAt: doc.data().timestamp,
-          }));
-
-          setNotifications(notificationsData);
-          setUnreadNotifications(
-            new Set(notificationsData.filter((n) => !n.read).map((n) => n.id))
-          );
-        });
-      }
-    });
-
-    return () => {
-      unsubscribeAuth();
-      if (unsubscribeNotifications) unsubscribeNotifications();
-    };
-  }, []);
 
   const handleLogout = async () => {
     try {
-      setAuthError(null);
       await auth.signOut();
       handleMenuClose();
     } catch (error) {
-      setAuthError(error.message);
       console.error("Error logging out:", error);
     }
   };
@@ -194,26 +172,17 @@ const Topbar = ({ onLogout }) => {
   };
 
   const handleEditProfile = () => {
-    // Add your logic for editing the profile here
-    console.log("Edit Profile clicked");
+    handleMenuClose();
+    navigate("/form");
   };
 
-  const reclassifyNotifications = () => {
-    const now = new Date().getTime();
-    setNotifications((prevNotifications) =>
-      prevNotifications.map((notification) => {
-        const notificationTime = notification.timestamp;
-        const timeDiff = now - notificationTime;
+  const [searchQuery, setSearchQuery] = useState("");
 
-        if (timeDiff > 24 * 60 * 60 * 1000) {
-          return {
-            ...notification,
-            timestamp: notificationTime - 24 * 60 * 60 * 1000,
-          };
-        }
-        return notification;
-      })
-    );
+  const handleSearch = (e) => {
+    if (e.key === "Enter" && searchQuery.trim()) {
+      navigate(`/boards?search=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchQuery("");
+    }
   };
 
   useEffect(() => {
@@ -254,7 +223,7 @@ const Topbar = ({ onLogout }) => {
                 : "Unknown User";
 
               // Add notification to Firestore
-              const notificationRef = await addDoc(
+              await addDoc(
                 collection(db, "notifications"),
                 {
                   userId: currentUser.uid,
@@ -325,8 +294,14 @@ const Topbar = ({ onLogout }) => {
         return newUnread;
       });
 
-      // Navigate if boardId exists
-      if (notification.boardId) {
+      // Navigate based on notification type
+      if (notification.type === "meeting_invite") {
+        navigate("/calendar");
+      } else if (notification.type === "due_reminder_task" && notification.boardId) {
+        navigate(`/boards/${notification.boardId}`);
+      } else if (notification.type === "due_reminder_board" && notification.refId) {
+        navigate(`/boards/${notification.refId}`);
+      } else if (notification.boardId) {
         navigate(`/boards/${notification.boardId}`);
       }
 
@@ -399,8 +374,18 @@ const Topbar = ({ onLogout }) => {
         borderRadius="3px"
         width="40%"
       >
-        <InputBase sx={{ ml: 2, flex: 1 }} placeholder="Search..." />
-        <IconButton type="button" sx={{ p: 1 }}>
+        <InputBase
+          sx={{ ml: 2, flex: 1 }}
+          placeholder="Search boards..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={handleSearch}
+        />
+        <IconButton
+          type="button"
+          sx={{ p: 1 }}
+          onClick={() => searchQuery.trim() && navigate(`/boards?search=${encodeURIComponent(searchQuery.trim())}`)}
+        >
           <SearchIcon />
         </IconButton>
       </Box>
@@ -424,8 +409,14 @@ const Topbar = ({ onLogout }) => {
           aria-controls={open ? "profile-menu" : undefined}
           aria-haspopup="true"
           aria-expanded={open ? "true" : undefined}
+          sx={{ p: 0.5 }}
         >
-          <PersonOutlined />
+          <Avatar
+            src={user.photoURL || undefined}
+            sx={{ width: 32, height: 32, fontSize: 13, bgcolor: colors.blueAccent[600] }}
+          >
+            {!user.photoURL && getInitials(user.firstName, user.surname)}
+          </Avatar>
         </IconButton>
 
         {/* NOTIFICATION POPUP */}
@@ -547,6 +538,12 @@ const Topbar = ({ onLogout }) => {
                                 <PersonAddIcon />
                               ) : notification.type === "deadline" ? (
                                 <EventIcon />
+                              ) : notification.type === "meeting_invite" ? (
+                                <EventIcon />
+                              ) : notification.type === "due_reminder_task" ? (
+                                <ReminderIcon />
+                              ) : notification.type === "due_reminder_board" ? (
+                                <BoardReminderIcon />
                               ) : (
                                 <NotificationsOutlined />
                               )}
@@ -612,7 +609,12 @@ const Topbar = ({ onLogout }) => {
         >
           <Box p={2} width={250}>
             <Box display="flex" alignItems="center" gap={1} mb={2}>
-              <Avatar>{getInitials(user.firstName, user.surname)}</Avatar>
+              <Avatar
+                src={user.photoURL || undefined}
+                sx={{ width: 40, height: 40, bgcolor: colors.blueAccent[600] }}
+              >
+                {!user.photoURL && getInitials(user.firstName, user.surname)}
+              </Avatar>
               <Box>
                 <Typography fontWeight="bold">
                   {user.firstName} {user.surname}
@@ -647,6 +649,24 @@ const Topbar = ({ onLogout }) => {
           </Box>
         </Menu>
       </Box>
+
+      {/* Live notification toast */}
+      <Snackbar
+        open={Boolean(toast)}
+        autoHideDuration={4500}
+        onClose={() => setToast(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        sx={{ mb: 1, mr: 1 }}
+      >
+        <Alert
+          onClose={() => setToast(null)}
+          severity={toast?.severity || "info"}
+          variant="filled"
+          sx={{ borderRadius: 2, maxWidth: 360, boxShadow: 6 }}
+        >
+          {toast?.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

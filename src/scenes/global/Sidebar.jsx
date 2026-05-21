@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { ProSidebar, Menu, MenuItem } from "react-pro-sidebar";
-import { Box, IconButton, Typography, useTheme } from "@mui/material";
+import { Box, IconButton, Typography, useTheme, Avatar } from "@mui/material";
 import { Link } from "react-router-dom";
 import "react-pro-sidebar/dist/css/styles.css";
 import { tokens } from "../../theme";
@@ -12,10 +12,13 @@ import CalendarTodayOutlinedIcon from "@mui/icons-material/CalendarTodayOutlined
 import PieChartOutlineOutlinedIcon from "@mui/icons-material/PieChartOutlineOutlined";
 import MenuOutlinedIcon from "@mui/icons-material/MenuOutlined";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
-import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import { auth, db } from "../../utils/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import PolicyOutlinedIcon from "@mui/icons-material/PolicyOutlined";
+import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
+import ForumOutlinedIcon from "@mui/icons-material/ForumOutlined";
+import { Badge } from "@mui/material";
+import { collection, onSnapshot, query, where, orderBy, limit } from "firebase/firestore";
 
 const Item = ({ title, to, icon, selected, setSelected }) => {
   const theme = useTheme();
@@ -55,6 +58,8 @@ const Sidebar = () => {
   });
   const [isCEO, setIsCEO] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [unreadChat, setUnreadChat] = useState(0);
+  const [photoURL, setPhotoURL] = useState(null);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
@@ -74,12 +79,10 @@ const Sidebar = () => {
           if (userDocSnap.exists()) {
             const data = userDocSnap.data();
             setUserData({
-              name:
-                `${data.firstName.charAt(0) || ""} ${
-                  data.surname || ""
-                }`.trim() || "User",
+              name: `${data.firstName || ""} ${data.surname || ""}`.trim() || "User",
               position: data.position || "Position Not Set",
             });
+            setPhotoURL(data.photoURL || null);
           } else {
             // Handle case where user document does not exist
             setUserData({
@@ -110,8 +113,34 @@ const Sidebar = () => {
     return () => unsubscribe();
   }, []);
 
+  // Track unread chat messages since last visit
+  useEffect(() => {
+    const lastVisit = localStorage.getItem("chatLastVisit");
+    const since = lastVisit ? new Date(lastVisit) : new Date(0);
+    const q = query(
+      collection(db, "globalChat"),
+      where("createdAt", ">", since),
+      orderBy("createdAt", "desc"),
+      limit(99)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      // Only count messages from other users
+      const currentUid = auth.currentUser?.uid;
+      const count = snap.docs.filter((d) => d.data().authorId !== currentUid).length;
+      setUnreadChat(count > 0 ? count : 0);
+    });
+    return () => unsub();
+  }, []);
+
+  // Clear badge when chat is selected
+  const handleChatSelect = () => {
+    localStorage.setItem("chatLastVisit", new Date().toISOString());
+    setUnreadChat(0);
+    setSelected("Chat");
+  };
+
   if (isLoading) {
-    return <Typography>Loading...</Typography>; // Show a loading spinner or text
+    return <Typography>Loading...</Typography>;
   }
 
   return (
@@ -127,10 +156,10 @@ const Sidebar = () => {
           padding: "5px 35px 5px 20px !important",
         },
         "& .pro-inner-item:hover": {
-          color: "#868dfb !important",
+          color: "#47aeff !important",
         },
         "& .pro-menu-item.active": {
-          color: "#6870fa !important",
+          color: "#1a8fff !important",
         },
       }}
     >
@@ -165,13 +194,21 @@ const Sidebar = () => {
           {!isCollapsed && (
             <Box mb="25px">
               <Box display="flex" justifyContent="center" alignItems="center">
-                <img
-                  alt="profile-user"
-                  width="100px"
-                  height="100px"
-                  src={`../../assets/ShuCon.png`}
-                  style={{ cursor: "pointer", borderRadius: "50%" }}
-                />
+                <Avatar
+                  src={photoURL || undefined}
+                  sx={{
+                    width: 100,
+                    height: 100,
+                    fontSize: 36,
+                    fontWeight: 700,
+                    bgcolor: colors.blueAccent[600],
+                    border: `3px solid ${colors.blueAccent[500]}`,
+                    cursor: "pointer",
+                  }}
+                  onClick={() => window.location.href = "/form"}
+                >
+                  {!photoURL && userData.name?.charAt(0).toUpperCase()}
+                </Avatar>
               </Box>
               <Box textAlign="center">
                 <Typography
@@ -241,6 +278,20 @@ const Sidebar = () => {
               setSelected={setSelected}
             />
 
+            <MenuItem
+              active={selected === "Chat"}
+              style={{ color: colors.grey[100] }}
+              onClick={handleChatSelect}
+              icon={
+                <Badge badgeContent={unreadChat} color="error" max={99}>
+                  <ForumOutlinedIcon />
+                </Badge>
+              }
+            >
+              <Typography>Team Chat</Typography>
+              <Link to="/chat" />
+            </MenuItem>
+
             <Typography
               variant="h6"
               color={colors.grey[300]}
@@ -268,6 +319,14 @@ const Sidebar = () => {
               title="Pie Chart"
               to="/pie"
               icon={<PieChartOutlineOutlinedIcon />}
+              selected={selected}
+              setSelected={setSelected}
+            />
+
+            <Item
+              title="Word Scramble"
+              to="/game"
+              icon={<SportsEsportsOutlinedIcon />}
               selected={selected}
               setSelected={setSelected}
             />

@@ -4,57 +4,37 @@ import {
   Button,
   Typography,
   useTheme,
-  Grid,
   Card,
   CardContent,
+  Chip,
+  alpha,
+  Divider,
 } from "@mui/material";
+import {
+  CheckCircleOutline as DoneIcon,
+  HourglassEmpty as InProgressIcon,
+  ListAlt as ToDoIcon,
+} from "@mui/icons-material";
 import { tokens } from "../../theme";
 import Header from "../../components/Header";
+import AnimatedCounter from "../../components/AnimatedCounter";
 import { useNavigate } from "react-router-dom";
-import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import { collection, getDocs, doc, getDoc, query, where } from "firebase/firestore";
 import UserBoardsChart from "../userBoardsChart";
 import { db, auth } from "../../utils/firebase";
 import { useAuthState } from "react-firebase-hooks/auth";
+import WordScrambleGame from "../game";
 
 const Dashboard = () => {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
   const navigate = useNavigate();
-  const [users, setUsers] = useState([]);
   const [boards, setBoards] = useState([]);
-  const [userTasks, setUserTasks] = useState([]);
-  const [user, setUser] = useState({ firstName: "", surname: "" });
+const [user, setUser] = useState({ firstName: "", surname: "" });
   const [currentUser, loading] = useAuthState(auth);
   const [boardBackgrounds, setBoardBackgrounds] = useState({});
 
-  // Background images array
-  const backgroundImages = [
-    "/assets/bg1.jpg",
-    "/assets/bg2.jpg",
-    "/assets/bg3.jpg",
-    "/assets/bg4.jpg",
-    "/assets/bg5.jpg",
-    "/assets/bg7.jpg",
-    "/assets/bg8.jpg",
-    "/assets/bg9.jpg",
-    "/assets/bg10.jpg",
-    "/assets/bg11.jpg",
-    "/assets/bg12.jpg",
-    "/assets/bg13.jpg",
-    "/assets/bg14.jpg",
-    "/assets/bg15.jpg",
-    "/assets/bg16.jpg",
-    "/assets/bg17.jpg",
-    "/assets/bg18.jpg",
-    "/assets/bg19.jpg",
-    "/assets/bg20.jpg",
-    "/assets/bg21.jpg",
-    "/assets/bg22.jpg",
-    "/assets/bg23.jpg",
-    "/assets/bg24.jpg",
-    "/assets/bg25.jpg",
-  ];
+  const backgroundImages = Array.from({ length: 25 }, (_, i) => `/assets/bg${i + 1}.jpg`);
 
   // Initialize board backgrounds
   useEffect(() => {
@@ -89,15 +69,6 @@ const Dashboard = () => {
           return;
         }
 
-        // Fetch users
-        const usersRef = collection(db, "users");
-        const usersSnapshot = await getDocs(usersRef);
-        const usersData = usersSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setUsers(usersData);
-
         // Fetch boards where the current user is a member
         const boardsRef = collection(db, "boards");
         const boardsQuery = query(
@@ -111,9 +82,6 @@ const Dashboard = () => {
         }));
         setBoards(boardsData);
 
-        // Group tasks by user
-        const groupedTasks = groupTasksByUser(boardsData, usersData);
-        setUserTasks(groupedTasks);
       } catch (err) {
         console.error("Error fetching data:", err);
         // Handle error appropriately
@@ -122,31 +90,6 @@ const Dashboard = () => {
 
     fetchData();
   }, [currentUser, loading, navigate]);
-
-  // Group tasks by user and select the most recent board for each user
-  const groupTasksByUser = (boards, users) => {
-    if (!Array.isArray(boards) || !Array.isArray(users)) return [];
-  
-    const grouped = {};
-  
-    // Initialize users with their boards and deadlines
-    boards.forEach((board) => {
-      if (!board || !board.createdBy) return;
-  
-      const user = users.find((user) => user.id === board.createdBy);
-      if (user) {
-        grouped[user.id] = {
-          user: `${user.firstName || "Unknown"} ${user.surname || "User"}`,
-          boardName: board.boardName || "Unnamed Board",
-          deadline: board.deadline || "No deadline",
-        };
-      }
-    });
-  
-    // Convert grouped users into an array
-    return Object.values(grouped);
-  };
-  
 
   // Format timestamp to a readable date
   const formatDate = (deadline) => {
@@ -224,31 +167,72 @@ const Dashboard = () => {
   return (
     <Box m="20px" height="90vh" display="flex" flexDirection="column" overflow="auto">
       {/* HEADER */}
-      <Box display="flex" justifyContent="space-between" alignItems="center">
+      <Box display="flex" justifyContent="space-between" alignItems="center" className="animate-fade-in">
         <Header
           title="SHUDU CONNECTIONS"
-          subtitle={`Welcome To Reporting Tool: ${user.firstName} ${user.surname}`}
+          subtitle={`Welcome back, ${user.firstName} ${user.surname}`}
         />
-        
       </Box>
 
+      {/* QUICK STATS */}
+      {boards.length > 0 && (
+        <Box display="flex" gap={1.5} mb={2} flexWrap="wrap" className="animate-fade-in">
+          {[
+            { label: "Total Boards", value: boards.length, icon: <ToDoIcon sx={{ fontSize: 16 }} />, color: colors.blueAccent[400] },
+            { label: "In Progress", value: boards.filter(b => (b.status||"").toLowerCase().includes("progress")).length, icon: <InProgressIcon sx={{ fontSize: 16 }} />, color: colors.orangeAccent?.[400] || "#ff9800" },
+            { label: "Completed", value: boards.filter(b => (b.status||"").toLowerCase().includes("complet")).length, icon: <DoneIcon sx={{ fontSize: 16 }} />, color: colors.greenAccent[400] },
+          ].map((stat, i) => (
+            <Box
+              key={i}
+              sx={{
+                display: "flex", alignItems: "center", gap: 1,
+                px: 2, py: 1, borderRadius: 3,
+                bgcolor: alpha(stat.color, 0.12),
+                border: `1px solid ${alpha(stat.color, 0.25)}`,
+                animation: `fadeSlideUp 0.4s ease ${i * 0.08}s both`,
+              }}
+            >
+              <Box sx={{ color: stat.color }}>{stat.icon}</Box>
+              <AnimatedCounter value={stat.value} variant="h6" sx={{ color: stat.color, lineHeight: 1 }} />
+              <Typography variant="caption" color={colors.grey[400]}>{stat.label}</Typography>
+            </Box>
+          ))}
+        </Box>
+      )}
+
       {/* BOARDS GRID */}
+      {boards.length === 0 && (
+        <Box p="20px" textAlign="center">
+          <Typography color={colors.grey[300]} variant="h6">
+            No boards yet — create one to get started.
+          </Typography>
+          <Button variant="contained" sx={{ mt: 2 }} onClick={() => navigate("/newBoard")}>
+            Create Board
+          </Button>
+        </Box>
+      )}
       <Box
         display="grid"
-        gridTemplateColumns="repeat(12, 1fr)"
+        gridTemplateColumns="repeat(auto-fill, minmax(220px, 1fr))"
         gap="20px"
         p="10px"
-        sx={{ gridAutoRows: "minmax(140px, auto)" }}
       >
-        {boards.slice(0, 4).map((board) => (
+        {[...boards]
+          .sort((a, b) => {
+            const ta = a.createdAt?.toDate?.() ?? new Date(a.createdAt ?? 0);
+            const tb = b.createdAt?.toDate?.() ?? new Date(b.createdAt ?? 0);
+            return tb - ta;
+          })
+          .slice(0, 4)
+          .map((board, idx) => (
           <Box
             key={board.id}
-            gridColumn="span 3"
             display="flex"
             alignItems="center"
             justifyContent="center"
             sx={{
               borderRadius: "8px",
+              animation: `fadeSlideUp 0.4s ease ${idx * 0.1}s both`,
               boxShadow: 3,
               transition: "transform 0.2s, box-shadow 0.2s",
               "&:hover": {
@@ -263,19 +247,31 @@ const Dashboard = () => {
             }}
             onClick={() => navigate(`/boards/${board.id}`)}
           >
-            <Card sx={{ 
-              width: "100%", 
-              height: "100%", 
-              backgroundColor: "transparent", 
-              boxShadow: "none" 
+            <Card sx={{
+              width: "100%",
+              height: "100%",
+              backgroundColor: "transparent",
+              boxShadow: "none"
             }}>
               <CardContent>
-                <Typography variant="h5" fontWeight="600" color="white">
+                <Typography variant="h5" fontWeight="600" color="white" gutterBottom>
                   {truncateBoardName(board.boardName)}
                 </Typography>
-                <Typography variant="body2" color="white">
-                  {formatDate(board.deadline)}
+                <Typography variant="body2" color="rgba(255,255,255,0.8)" mb={1}>
+                  Due: {formatDate(board.deadline)}
                 </Typography>
+                {board.priority && (
+                  <Chip
+                    label={board.priority}
+                    size="small"
+                    sx={{
+                      bgcolor: board.priority === "Critical" ? "error.main" : board.priority === "Important" ? "warning.main" : "success.main",
+                      color: "white",
+                      fontSize: "0.65rem",
+                      height: 20,
+                    }}
+                  />
+                )}
               </CardContent>
             </Card>
           </Box>
@@ -291,7 +287,7 @@ const Dashboard = () => {
         sx={{ gridAutoRows: "minmax(140px, auto)" }}
       >
         {/* User Boards Distribution */}
-        <Box gridColumn="span 8" gridRow="span 3" backgroundColor={colors.primary[400]}>
+        <Box gridColumn="span 12" gridRow="span 3" backgroundColor={colors.primary[400]}>
           <Box mt="25px" p="0 30px" display="flex" justifyContent="space-between">
             <Typography variant="h5" fontWeight="600" color={colors.grey[100]}>
               User Boards Distribution
@@ -302,64 +298,12 @@ const Dashboard = () => {
           </Box>
         </Box>
 
-        {/* Current Tasks */}
-        <Box
-          gridColumn="span 4"
-          gridRow="span 3"
-          backgroundColor={colors.primary[400]}
-          overflow="auto"
-          maxHeight="470px"
-        >
-          <Box
-            display="flex"
-            justifyContent="space-between"
-            alignItems="center"
-            borderBottom={`4px solid ${colors.primary[500]}`}
-            p="15px"
-          >
-            <Typography color={colors.grey[100]} variant="h5" fontWeight="600">
-              Current Tasks
-            </Typography>
-          </Box>
+      </Box>
 
-          {userTasks.map((task, i) => (
-            <Grid
-              container
-              key={`${task.user}-${i}`}
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-              borderBottom={`4px solid ${colors.primary[500]}`}
-              p="15px"
-            >
-              <Grid item xs={4} display="flex" justifyContent="center">
-                <Typography color={colors.greenAccent[500]} variant="h5" fontWeight="600">
-                  {task.user}
-                </Typography>
-              </Grid>
-
-              <Grid item xs={4} display="flex" justifyContent="center">
-                <Typography color={colors.grey[100]}>{formatDate(task.deadline)}</Typography>
-              </Grid>
-
-              <Grid item xs={4} display="flex" justifyContent="center">
-                <Typography
-                  sx={{
-                    backgroundColor: colors.greenAccent[500],
-                    p: "5px 10px",
-                    borderRadius: "4px",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    maxWidth: "150px",
-                  }}
-                >
-                  {truncateBoardName(task.boardName)}
-                </Typography>
-              </Grid>
-            </Grid>
-          ))}
-        </Box>
+      {/* WORD SCRAMBLE GAME */}
+      <Box p="10px" mt={2}>
+        <Divider sx={{ mb: 2, borderColor: colors.primary[400] }} />
+        <WordScrambleGame />
       </Box>
     </Box>
   );

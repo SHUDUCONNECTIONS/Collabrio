@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   Box,
   Button,
@@ -16,11 +16,26 @@ import {
   Chip,
   FormControlLabel,
   useTheme,
+  Typography,
+  Avatar,
+  Paper,
+  Tooltip,
+  alpha,
 } from "@mui/material";
+import {
+  ErrorOutline as CriticalIcon,
+  NotificationsActive as ImportantIcon,
+  LowPriority as MinorIcon,
+  Groups as MembersIcon,
+  CalendarToday as CalendarIcon,
+  AttachFile as AttachIcon,
+  Rocket as RocketIcon,
+  ArrowBack as BackIcon,
+} from "@mui/icons-material";
+import { tokens } from "../../theme";
 import { Formik } from "formik";
 import * as yup from "yup";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import Header from "../../components/Header";
 import { useNavigate } from "react-router-dom";
 import {
   collection,
@@ -40,16 +55,31 @@ import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import CancelIcon from "@mui/icons-material/Cancel";
 import emailjs from '@emailjs/browser';
 
+const avatarBg = (name = "") => {
+  const p = ["#1a8fff", "#00cfa5", "#b133cd", "#f58d3c", "#ffc107", "#ef5350"];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
+  return p[Math.abs(h) % p.length];
+};
+
+const PRIORITIES = [
+  { value: "Critical", label: "Critical", desc: "Needs immediate attention", icon: <CriticalIcon />, color: "#ef5350", bg: "#4a1010" },
+  { value: "Important", label: "Important", desc: "High value, do soon", icon: <ImportantIcon />, color: "#ff9800", bg: "#4a3010" },
+  { value: "Minor",    label: "Minor",    desc: "Nice to have", icon: <MinorIcon />, color: "#4caf50", bg: "#0f2e1a" },
+];
+
 const AddBoard = () => {
   const isNonMobile = useMediaQuery("(min-width:600px)");
   const navigate = useNavigate();
+  const theme = useTheme();
+  const colors = tokens(theme.palette.mode);
+  const isDark = theme.palette.mode === "dark";
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [files, setFiles] = useState([]);
   const [fileUploading, setFileUploading] = useState(false);
   const [sendingEmails, setSendingEmails] = useState(false);
-  const theme = useTheme();
 
   // EmailJS configuration - Replace with your actual values
   const EMAILJS_SERVICE_ID = process.env.REACT_APP_EMAILJS_SERVICE_ID;
@@ -398,279 +428,332 @@ const AddBoard = () => {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Box
-        flexGrow={1}
-        m="20px"
-        display="flex"
-        flexDirection="column"
-        alignItems="center"
-      >
-        <Header
-          title="CREATE BOARD"
-          subtitle="Add a New Board to Your Workspace"
-        />
-        <Box width={isNonMobile ? "80%" : "100%"} maxWidth="800px">
-          {error && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
+      <Box m="20px" pb={4}>
 
-          {sendingEmails && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              Sending notification emails to board members...
-            </Alert>
-          )}
+        {/* Back + heading */}
+        <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+          <IconButton size="small" onClick={() => navigate("/boards")} sx={{ color: colors.grey[400] }}>
+            <BackIcon fontSize="small" />
+          </IconButton>
+          <Typography variant="caption" color={colors.grey[400]}>Back to Boards</Typography>
+        </Box>
+        <Typography variant="h3" fontWeight={800} color={colors.grey[100]} mb={0.5}>
+          What are you working on?
+        </Typography>
+        <Typography variant="body1" color={colors.grey[400]} mb={3}>
+          Give your board a name, pick a vibe, and add your team.
+        </Typography>
+        {error && <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>}
+        {sendingEmails && <Alert severity="info" sx={{ mb: 2 }}>Sending invites to your team...</Alert>}
 
-          <Formik
-            onSubmit={handleFormSubmit}
-            initialValues={initialValues}
-            validationSchema={boardSchema}
-          >
-            {({
-              values,
-              errors,
-              touched,
-              handleBlur,
-              handleChange,
-              handleSubmit,
-              setFieldValue,
-              isSubmitting,
-            }) => (
-              <form onSubmit={handleSubmit}>
-                <Box
-                  display="grid"
-                  gap="20px"
-                  gridTemplateColumns="repeat(4, minmax(0, 1fr))"
-                  sx={{
-                    "& > div": {
-                      gridColumn: isNonMobile ? undefined : "span 4",
-                    },
-                    backgroundColor: theme.palette.mode === "dark" 
-                      ? theme.palette.background.paper 
-                      : theme.palette.background.default,
-                    p: 2,
-                    borderRadius: 1,
-                  }}
-                >
-                  <TextField
-                    fullWidth
-                    variant="filled"
-                    type="text"
-                    label="Board Name"
-                    onBlur={handleBlur}
-                    onChange={handleChange}
-                    value={values.boardName}
-                    name="boardName"
-                    error={!!touched.boardName && !!errors.boardName}
-                    helperText={touched.boardName && errors.boardName}
-                    sx={{ gridColumn: "span 4" }}
-                  />
+        <Formik onSubmit={handleFormSubmit} initialValues={initialValues} validationSchema={boardSchema}>
+          {({ values, errors, touched, handleBlur, handleChange, handleSubmit, setFieldValue, isSubmitting }) => (
+            <form onSubmit={handleSubmit}>
+              <Box display="flex" gap={3} flexDirection={isNonMobile ? "row" : "column"} alignItems="flex-start">
 
-                  <TextField
-                    fullWidth
-                    variant="filled"
-                    type="text"
-                    label="Description"
-                    onBlur={handleBlur}
-                    onChange={handleChange}
-                    value={values.description}
-                    name="description"
-                    error={!!touched.description && !!errors.description}
-                    helperText={touched.description && errors.description}
-                    multiline
-                    rows={4}
-                    sx={{ gridColumn: "span 4" }}
-                  />
+                {/* ── LEFT: form ── */}
+                <Box flex={1} display="flex" flexDirection="column" gap={3}>
 
-                  <FormControl
-                    fullWidth
-                    variant="filled"
-                    sx={{ gridColumn: "span 4" }}
-                  >
-                    <InputLabel id="priority-label">Priority</InputLabel>
-                    <Select
-                      labelId="priority-label"
-                      value={values.priority}
+                  {/* Board name */}
+                  <Paper sx={{ p: 3, borderRadius: 3, bgcolor: colors.primary[400] }}>
+                    <Typography variant="subtitle1" fontWeight={700} color={colors.grey[200]} mb={1.5}>
+                      Board name
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      placeholder="e.g. Website redesign, Q2 planning, Sprint 4..."
+                      value={values.boardName}
+                      name="boardName"
+                      onBlur={handleBlur}
                       onChange={handleChange}
-                      name="priority"
-                      error={!!touched.priority && !!errors.priority}
-                    >
-                      <MenuItem value="High">High</MenuItem>
-                      <MenuItem value="Medium">Medium</MenuItem>
-                      <MenuItem value="Low">Low</MenuItem>
-                    </Select>
-                  </FormControl>
+                      error={!!touched.boardName && !!errors.boardName}
+                      helperText={touched.boardName && errors.boardName}
+                      inputProps={{ style: { fontSize: "1.1rem", fontWeight: 600 } }}
+                      sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    />
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      placeholder="What's this board about? (optional)"
+                      value={values.description}
+                      name="description"
+                      onBlur={handleBlur}
+                      onChange={handleChange}
+                      sx={{ mt: 2, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    />
+                  </Paper>
 
-                  <FormControl
-                    fullWidth
-                    variant="filled"
-                    sx={{ gridColumn: "span 4" }}
-                  >
-                    <InputLabel id="members-label">Choose Members (Optional)</InputLabel>
-                    <Select
-                      labelId="members-label"
-                      multiple
-                      value={values.members}
-                      onChange={(event) =>
-                        setFieldValue("members", event.target.value)
-                      }
-                      renderValue={(selected) =>
-                        selected.length === 0 
-                          ? <em>No members selected</em>
-                          : selected
-                              .map((id) => {
-                                const user = users.find((user) => user.id === id);
-                                return user
-                                  ? `${user.firstName} ${user.surname}`
-                                  : "";
-                              })
-                              .filter(Boolean)
-                              .join(", ")
-                      }
-                    >
+                  {/* Priority cards */}
+                  <Paper sx={{ p: 3, borderRadius: 3, bgcolor: colors.primary[400] }}>
+                    <Typography variant="subtitle1" fontWeight={700} color={colors.grey[200]} mb={1.5}>
+                      How urgent is this?
+                    </Typography>
+                    <Box display="flex" gap={1.5} flexWrap="wrap">
+                      {PRIORITIES.map((p) => {
+                        const selected = values.priority === p.value;
+                        return (
+                          <Box
+                            key={p.value}
+                            onClick={() => setFieldValue("priority", p.value)}
+                            sx={{
+                              flex: "1 1 120px",
+                              p: 2,
+                              borderRadius: 3,
+                              cursor: "pointer",
+                              border: `2px solid ${selected ? p.color : alpha(p.color, 0.2)}`,
+                              bgcolor: selected ? alpha(p.color, 0.12) : alpha(colors.primary[500], 0.5),
+                              transition: "all 0.18s ease",
+                              "&:hover": { border: `2px solid ${p.color}`, bgcolor: alpha(p.color, 0.08) },
+                              transform: selected ? "translateY(-2px)" : "none",
+                              boxShadow: selected ? `0 4px 16px ${alpha(p.color, 0.25)}` : "none",
+                            }}
+                          >
+                            <Box sx={{ color: p.color, mb: 0.5 }}>{p.icon}</Box>
+                            <Typography variant="body2" fontWeight={700} color={selected ? p.color : colors.grey[300]}>
+                              {p.label}
+                            </Typography>
+                            <Typography variant="caption" color={colors.grey[500]}>{p.desc}</Typography>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  </Paper>
+
+                  {/* Members */}
+                  <Paper sx={{ p: 3, borderRadius: 3, bgcolor: colors.primary[400] }}>
+                    <Box display="flex" alignItems="center" gap={1} mb={1.5}>
+                      <MembersIcon sx={{ color: colors.blueAccent[400], fontSize: 20 }} />
+                      <Typography variant="subtitle1" fontWeight={700} color={colors.grey[200]}>
+                        Who's on this board?
+                      </Typography>
+                    </Box>
+                    <Box display="flex" flexWrap="wrap" gap={1.2}>
                       {users
-                        .filter((user) => user.id !== auth.currentUser?.uid)
-                        .map((user) => (
-                          <MenuItem key={user.id} value={user.id}>
-                            <ListItemIcon>
-                              <Checkbox
-                                checked={values.members.indexOf(user.id) > -1}
-                              />
-                            </ListItemIcon>
-                            <ListItemText
-                              primary={`${user.firstName} ${user.surname}`}
-                              secondary={user.email}
-                            />
-                          </MenuItem>
-                        ))}
-                    </Select>
-                  </FormControl>
+                        .filter((u) => u.id !== auth.currentUser?.uid)
+                        .map((u) => {
+                          const name = `${u.firstName || ""} ${u.surname || ""}`.trim();
+                          const selected = values.members.includes(u.id);
+                          return (
+                            <Tooltip key={u.id} title={u.email} placement="top">
+                              <Box
+                                onClick={() => {
+                                  const next = selected
+                                    ? values.members.filter((id) => id !== u.id)
+                                    : [...values.members, u.id];
+                                  setFieldValue("members", next);
+                                }}
+                                sx={{
+                                  display: "flex", alignItems: "center", gap: 1,
+                                  px: 1.5, py: 0.8, borderRadius: 10, cursor: "pointer",
+                                  border: `2px solid ${selected ? colors.blueAccent[400] : alpha(colors.grey[500], 0.3)}`,
+                                  bgcolor: selected ? alpha(colors.blueAccent[500], 0.12) : "transparent",
+                                  transition: "all 0.15s",
+                                  "&:hover": { border: `2px solid ${colors.blueAccent[400]}` },
+                                  transform: selected ? "scale(1.04)" : "none",
+                                }}
+                              >
+                                <Box sx={{ position: "relative" }}>
+                                  <Avatar src={u.photoURL || undefined} sx={{ width: 28, height: 28, fontSize: 12, bgcolor: avatarBg(name) }}>
+                                    {!u.photoURL && name.charAt(0).toUpperCase()}
+                                  </Avatar>
+                                  {selected && (
+                                    <Box sx={{ position: "absolute", bottom: -2, right: -2, width: 12, height: 12, borderRadius: "50%", bgcolor: colors.blueAccent[400], border: "1.5px solid white", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                      <Typography sx={{ fontSize: 8, color: "#fff", lineHeight: 1 }}>✓</Typography>
+                                    </Box>
+                                  )}
+                                </Box>
+                                <Typography variant="caption" fontWeight={selected ? 700 : 500} color={selected ? colors.blueAccent[300] : colors.grey[300]}>
+                                  {u.firstName}
+                                </Typography>
+                              </Box>
+                            </Tooltip>
+                          );
+                        })}
+                      {users.filter((u) => u.id !== auth.currentUser?.uid).length === 0 && (
+                        <Typography variant="body2" color={colors.grey[500]}>No other team members found.</Typography>
+                      )}
+                    </Box>
+                    {values.members.length > 0 && (
+                      <Typography variant="caption" color={colors.blueAccent[400]} mt={1} display="block">
+                        {values.members.length} person{values.members.length !== 1 ? "s" : ""} invited
+                      </Typography>
+                    )}
+                  </Paper>
 
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={values.noDeadline}
-                        onChange={(e) => {
-                          setFieldValue("noDeadline", e.target.checked);
-                          if (e.target.checked) {
-                            // Clear the deadline if "No Deadline" is checked
-                            setFieldValue("deadline", null);
-                          }
-                        }}
-                        name="noDeadline"
-                      />
-                    }
-                    label="No Deadline"
-                    sx={{ gridColumn: "span 4" }}
-                  />
-
-                  {!values.noDeadline && (
-                    <DatePicker
-                      label="Deadline"
-                      value={values.deadline}
-                      onChange={(date) => setFieldValue("deadline", date)}
-                      minDate={new Date()}
-                      disabled={values.noDeadline}
-                      sx={{ gridColumn: "span 4" }}
-                      slots={{
-                        textField: TextField,
-                      }}
-                      slotProps={{
-                        textField: {
-                          fullWidth: true,
-                          variant: "filled",
-                          error: !!touched.deadline && !!errors.deadline && !values.noDeadline,
-                          helperText: touched.deadline && errors.deadline && !values.noDeadline ? errors.deadline : "",
-                        },
-                      }}
-                    />
-                  )}
-
-                  <Box sx={{ gridColumn: "span 4" }}>
-                    <input
-                      accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
-                      style={{ display: "none" }}
-                      id="file-upload"
-                      type="file"
-                      multiple
-                      onChange={(e) =>
-                        setFiles([...files, ...Array.from(e.target.files)])
+                  {/* Deadline */}
+                  <Paper sx={{ p: 3, borderRadius: 3, bgcolor: colors.primary[400] }}>
+                    <Box display="flex" alignItems="center" gap={1} mb={1.5}>
+                      <CalendarIcon sx={{ color: colors.greenAccent[400], fontSize: 20 }} />
+                      <Typography variant="subtitle1" fontWeight={700} color={colors.grey[200]}>
+                        When's the deadline?
+                      </Typography>
+                    </Box>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={values.noDeadline}
+                          onChange={(e) => { setFieldValue("noDeadline", e.target.checked); if (e.target.checked) setFieldValue("deadline", null); }}
+                          name="noDeadline"
+                          sx={{ color: colors.grey[400] }}
+                        />
                       }
+                      label={<Typography variant="body2" color={colors.grey[400]}>No deadline — we'll wing it</Typography>}
                     />
+                    {!values.noDeadline && (
+                      <DatePicker
+                        label="Pick a date"
+                        value={values.deadline}
+                        onChange={(d) => setFieldValue("deadline", d)}
+                        minDate={new Date()}
+                        slotProps={{
+                          textField: {
+                            fullWidth: true, size: "small",
+                            error: !!touched.deadline && !!errors.deadline && !values.noDeadline,
+                            helperText: touched.deadline && errors.deadline && !values.noDeadline ? errors.deadline : "",
+                            sx: { mt: 1.5 },
+                          },
+                        }}
+                      />
+                    )}
+                  </Paper>
+
+                  {/* File attachments */}
+                  <Paper sx={{ p: 3, borderRadius: 3, bgcolor: colors.primary[400] }}>
+                    <Box display="flex" alignItems="center" gap={1} mb={1.5}>
+                      <AttachIcon sx={{ color: colors.orangeAccent?.[400] || "#ff9800", fontSize: 20 }} />
+                      <Typography variant="subtitle1" fontWeight={700} color={colors.grey[200]}>
+                        Attach files  <Typography component="span" variant="caption" color={colors.grey[500]}>(optional)</Typography>
+                      </Typography>
+                    </Box>
+
+                    <input accept=".pdf,.doc,.docx,.xls,.xlsx,.csv" style={{ display: "none" }} id="file-upload" type="file" multiple
+                      onChange={(e) => setFiles([...files, ...Array.from(e.target.files)])} />
+
                     <label htmlFor="file-upload">
-                      <IconButton 
-                        component="span" 
-                        color="secondary"
+                      <Box
                         sx={{
-                          color: theme.palette.secondary.main,
+                          border: `2px dashed ${alpha(colors.grey[500], 0.4)}`,
+                          borderRadius: 2, p: 2, textAlign: "center", cursor: "pointer",
+                          "&:hover": { border: `2px dashed ${colors.blueAccent[400]}`, bgcolor: alpha(colors.blueAccent[500], 0.05) },
+                          transition: "all 0.15s",
                         }}
                       >
-                        <CloudUploadIcon />
-                      </IconButton>
-                      <span>
-                        {files.length > 0
-                          ? `${files.length} files selected`
-                          : "Upload documents (PDF, Word, Excel, CSV)"}
-                      </span>
+                        <AttachIcon sx={{ color: colors.grey[500], mb: 0.5 }} />
+                        <Typography variant="body2" color={colors.grey[400]}>
+                          {files.length > 0 ? `${files.length} file${files.length > 1 ? "s" : ""} attached` : "Click to attach PDF, Word, Excel or CSV"}
+                        </Typography>
+                      </Box>
                     </label>
-                    {fileUploading && <CircularProgress size={24} />}
 
-                    <Box
-                      sx={{
-                        mt: 1,
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 0.5,
-                      }}
-                    >
-                      {files.map((file, index) => (
+                    {fileUploading && <CircularProgress size={20} sx={{ mt: 1 }} />}
+
+                    <Box display="flex" flexWrap="wrap" gap={0.8} mt={files.length ? 1.5 : 0}>
+                      {files.map((file, idx) => (
                         <Chip
-                          key={index}
-                          label={`${file.name} (${getFileType(file.name)})`}
-                          onDelete={() =>
-                            setFiles(files.filter((_, i) => i !== index))
-                          }
-                          deleteIcon={<CancelIcon />}
-                          variant="outlined"
-                          sx={{
-                            bgcolor: getFileColor(file.name),
-                            '& .MuiChip-label': {
-                              color: theme.palette.getContrastText(getFileColor(file.name))
-                            }
-                          }}
+                          key={idx}
+                          size="small"
+                          label={file.name}
+                          onDelete={() => setFiles(files.filter((_, i) => i !== idx))}
+                          sx={{ bgcolor: alpha(getFileColor(file.name), 0.18), color: getFileColor(file.name), border: `1px solid ${alpha(getFileColor(file.name), 0.4)}` }}
                         />
                       ))}
                     </Box>
-                  </Box>
+                  </Paper>
                 </Box>
 
-                <Box display="flex" justifyContent="center" mt="20px">
+                {/* ── RIGHT: live preview ── */}
+                {isNonMobile && (
+                  <Box sx={{ width: 260, flexShrink: 0, position: "sticky", top: 80 }}>
+                    <Typography variant="caption" color={colors.grey[500]} fontWeight={700} textTransform="uppercase" letterSpacing={1} mb={1} display="block">
+                      Preview
+                    </Typography>
+                    <Box
+                      sx={{
+                        borderRadius: 3, overflow: "hidden",
+                        backgroundImage: `linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url(/assets/bg3.jpg)`,
+                        backgroundSize: "cover", color: "#fff",
+                        animation: "fadeIn 0.3s ease",
+                      }}
+                    >
+                      {/* Priority stripe */}
+                      <Box sx={{ height: 4, bgcolor: PRIORITIES.find(p => p.value === values.priority)?.color || "#ff9800" }} />
+                      <Box p={2.5}>
+                        <Typography variant="h6" fontWeight={700} mb={0.5} sx={{ minHeight: 28 }}>
+                          {values.boardName || <span style={{ opacity: 0.4 }}>Board name...</span>}
+                        </Typography>
+                        <Typography variant="caption" sx={{ opacity: 0.7, display: "block", mb: 1.5, minHeight: 18 }}>
+                          {values.description || <span style={{ opacity: 0.5 }}>Description...</span>}
+                        </Typography>
+                        <Box display="flex" alignItems="center" justifyContent="space-between">
+                          <Chip
+                            label={values.priority}
+                            size="small"
+                            sx={{
+                              bgcolor: alpha(PRIORITIES.find(p => p.value === values.priority)?.color || "#ff9800", 0.85),
+                              color: "#fff", fontSize: "0.6rem", fontWeight: 700, height: 18,
+                            }}
+                          />
+                          <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                            {values.deadline ? new Date(values.deadline).toLocaleDateString() : values.noDeadline ? "No deadline" : ""}
+                          </Typography>
+                        </Box>
+                        {values.members.length > 0 && (
+                          <Box display="flex" mt={1.5} gap={0.5}>
+                            {values.members.slice(0, 5).map((id) => {
+                              const u = users.find(u => u.id === id);
+                              const name = u ? `${u.firstName || ""}` : "?";
+                              return (
+                                <Avatar key={id} src={u?.photoURL || undefined} sx={{ width: 24, height: 24, fontSize: 10, bgcolor: avatarBg(name), border: "1.5px solid rgba(255,255,255,0.5)" }}>
+                                  {!u?.photoURL && name.charAt(0).toUpperCase()}
+                                </Avatar>
+                              );
+                            })}
+                            {values.members.length > 5 && (
+                              <Avatar sx={{ width: 24, height: 24, fontSize: 10, bgcolor: "rgba(255,255,255,0.2)" }}>+{values.members.length - 5}</Avatar>
+                            )}
+                          </Box>
+                        )}
+                      </Box>
+                    </Box>
+
+                    {/* Create button */}
+                    <Button
+                      type="submit"
+                      variant="contained"
+                      fullWidth
+                      disabled={isSubmitting || fileUploading || sendingEmails}
+                      startIcon={isSubmitting || sendingEmails ? <CircularProgress size={16} color="inherit" /> : <RocketIcon />}
+                      sx={{
+                        mt: 2, py: 1.5, borderRadius: 3, fontWeight: 700, fontSize: "1rem",
+                        bgcolor: colors.blueAccent[500],
+                        "&:hover": { bgcolor: colors.blueAccent[400], transform: "translateY(-1px)" },
+                        "&.Mui-disabled": { opacity: 0.6 },
+                        transition: "all 0.2s",
+                      }}
+                    >
+                      {sendingEmails ? "Sending invites..." : isSubmitting ? "Creating..." : "Create Board"}
+                    </Button>
+                  </Box>
+                )}
+
+                {/* Mobile: submit button at bottom */}
+                {!isNonMobile && (
                   <Button
                     type="submit"
-                    color="secondary"
                     variant="contained"
+                    fullWidth
                     disabled={isSubmitting || fileUploading || sendingEmails}
-                    sx={{
-                      width: "100%",
-                      py: 1.5,
-                      px: 4,
-                      fontSize: "1rem",
-                    }}
+                    startIcon={isSubmitting || sendingEmails ? <CircularProgress size={16} color="inherit" /> : <RocketIcon />}
+                    sx={{ py: 1.5, borderRadius: 3, fontWeight: 700, bgcolor: colors.blueAccent[500] }}
                   >
-                    {isSubmitting ? (
-                      <CircularProgress size={24} />
-                    ) : sendingEmails ? (
-                      "Sending Notifications..."
-                    ) : (
-                      "Create Board"
-                    )}
+                    {sendingEmails ? "Sending invites..." : isSubmitting ? "Creating..." : "Create Board"}
                   </Button>
-                </Box>
-              </form>
-            )}
-          </Formik>
-          </Box>
+                )}
+              </Box>
+            </form>
+          )}
+        </Formik>
       </Box>
     </LocalizationProvider>
   );
@@ -678,7 +761,7 @@ const AddBoard = () => {
 
 const boardSchema = yup.object().shape({
   boardName: yup.string().required("Board Name is required"),
-  description: yup.string().required("Description is required"),
+  description: yup.string().optional(),
   priority: yup.string().required("Priority is required"),
   members: yup.array(),
   deadline: yup.date().nullable().test({
@@ -702,7 +785,7 @@ const boardSchema = yup.object().shape({
 const initialValues = {
   boardName: "",
   description: "",
-  priority: "Medium",
+  priority: "Important",
   members: [],
   deadline: null,
   noDeadline: false,
