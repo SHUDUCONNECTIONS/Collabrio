@@ -45,6 +45,15 @@ const handleDownloadForm = () => {
   document.body.removeChild(link);
 };
 
+const handleDownloadIndemnityForm = () => {
+  const link = document.createElement("a");
+  link.href = process.env.PUBLIC_URL + "/Indemnity_Form.pdf";
+  link.download = "Indemnity_Form.pdf";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
 const Sidebar = ({ onNavigate }) => {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
@@ -344,6 +353,14 @@ const Sidebar = ({ onNavigate }) => {
               style={{ color: colors.grey[100] }}
             >
               <Typography>Download Leave Form</Typography>
+            </MenuItem>
+
+            <MenuItem
+              onClick={handleDownloadIndemnityForm}
+              icon={<PolicyOutlinedIcon />}
+              style={{ color: colors.grey[100] }}
+            >
+              <Typography>Download Indemnity Form</Typography>
             </MenuItem>
 
             {/* <Item
